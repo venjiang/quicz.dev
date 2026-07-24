@@ -5,16 +5,16 @@ template: splash
 hero:
   title: 纯 Zig 的 QUIC 实现
   tagline: |
-    从零开始用 Zig 编写的实验性 IETF QUIC v1 transport。
-    纯 Zig TLS 1.3、stream、flow control，握手路径已与
-    Go 和 Rust 协议栈完成真实线路互通验证。
+    从零开始用 Zig 编写的 IETF QUIC transport —— 支持 QUIC v1 与 v2、
+    纯 Zig TLS 1.3（含 0-RTT 与后量子密钥交换）、multipath，
+    握手路径已与 Go 和 Rust 协议栈完成真实线路互通验证。
   actions:
     - text: 快速开始
       link: /zh-cn/quick-start/
       icon: right-arrow
       variant: primary
-    - text: 架构
-      link: /zh-cn/architecture/
+    - text: 功能对比
+      link: /zh-cn/comparisons/
       icon: document
       variant: minimal
     - text: GitHub
@@ -36,16 +36,17 @@ $ (cd examples/interop/go_echo_client && \
 # 分别验证带 FIN 的 "hello" / "world" echo —— 全程开启证书校验。
 ```
 
-## 第一轮里程碑包含什么
+## quicz 目前已实现
 
 <div className="qz-split">
 <div>
 
-- **纯 Zig TLS 1.3** —— 不依赖 C 密码学库，不链接 OpenSSL。
-- **QUIC packet protection** —— 按 RFC 9001 实现 header protection 与 AEAD。
-- **Stream 与 flow control** —— 双向 stream，连接级与 stream 级限额。
-- **Retry、connection ID routing、path validation** —— 真实 endpoint 的路由骨架。
-- **Loss recovery + NewReno 基线** —— 按 RFC 9002 处理 ACK 与重传。
+- **纯 Zig TLS 1.3 + 0-RTT** —— 不依赖 C 密码学库；支持后量子 X25519Kyber768。
+- **QUIC v1 与 v2 transport** —— stream、flow control、连接迁移、path validation、Retry、stateless reset、密钥更新、版本协商。
+- **DATAGRAM、multipath、ECN、PMTU、GSO/GRO**、连接池、qlog。
+- **Loss recovery + NewReno / CUBIC / BBR**，含报文 pacing。
+- **HTTP/3 + QPACK 静态表**、**WebTransport** 基础实现。
+- **线路级互通验证**：quic-go、quinn、QUIC-Interop-Runner。
 
 </div>
 <div>
@@ -83,15 +84,28 @@ const frame = (try conn.pollTx(0, &buf))
 
 自己跑一遍：[示例指南](/zh-cn/examples/)。
 
-## 诚实的范围
+## quicz 横向对比
 
-| 第一轮里程碑内 | 明确暂不实现 |
+权威功能矩阵在四个协议栈上追踪 37 项能力，覆盖率汇总如下：
+
+| 指标 | quic-go | quiche | s2n-quic | quicz |
+| --- | --- | --- | --- | --- |
+| 传输层（19 项） | 19/19 | 14/19 | 14/19 | 19/19 |
+| 拥塞控制（4 项） | 4/4 | 4/4 | 3/4 | 4/4 |
+| 密码套件（5 项） | 5/5 | 5/5 | 5/5 | 5/5 |
+| 应用层（6 项） | 6/6 | 3/6 | 0/6 | 2/6 |
+| 平台（3 项） | 2/3 | 0/3 | 1/3 | 1/3 |
+| **合计（37 项）** | **36/37** | **26/37** | **23/37** | **31/37** |
+
+quicz 在传输层、拥塞控制与密码套件上领先，剩余差距集中在应用层广度。完整 37 行
+逐项对比与差距分析见[功能对比](/zh-cn/comparisons/)。
+
+## 部分实现 / 暂未实现
+
+| 状态 | 能力 |
 | --- | --- |
-| QUIC v1 transport（RFC 9000 核心） | HTTP/3 与 QPACK |
-| TLS 1.3（RFC 9001），纯 Zig | QUIC DATAGRAM |
-| Loss recovery + NewReno（RFC 9002） | 完整 QUIC v2 / compatible-version 行为 |
-| Retry、path validation、CID routing | Multipath、qlog、PMTU、GSO/GRO |
-| 与 Go/Rust 协议栈互通 | 高级拥塞控制 |
+| 基础实现，持续完善 | HTTP/3 连接管理（GOAWAY / SETTINGS / 流生命周期）；WebTransport 会话 |
+| 暂未实现 | QPACK 动态表；HTTP Datagrams (RFC 9297)；流重置部分交付；FIPS 140-3；XDP 零拷贝 I/O |
 
 权威状态与验收证据见[传输任务矩阵](https://github.com/venjiang/quicz/blob/main/docs/zh-CN/quic_transport_tasks.md)。
 API 趋于稳定但仍在演进。
@@ -99,6 +113,7 @@ API 趋于稳定但仍在演进。
 ## 接下来
 
 - [快速开始](/zh-cn/quick-start/) —— 把 quicz 加入 Zig 构建，发出第一个 frame。
+- [功能对比](/zh-cn/comparisons/) —— quicz vs quic-go / quiche / s2n-quic，37 行。
 - [架构](/zh-cn/architecture/) —— endpoint、connection 与 TLS 层如何组合。
 - [规范覆盖](/zh-cn/spec/) —— RFC 9000/9001/9002 逐节状态。
 - [示例](/zh-cn/examples/) —— loopback、echo server 与 Go/Rust 互通命令。

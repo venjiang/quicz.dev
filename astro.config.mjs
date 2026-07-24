@@ -43,6 +43,13 @@ export default defineConfig({
 					items: [{ label: 'Run the examples', slug: 'examples', translations: { 'zh-CN': '运行示例' } }],
 				},
 				{
+					label: 'Reference',
+					translations: { 'zh-CN': '参考' },
+					items: [
+						{ label: 'Feature comparison', slug: 'comparisons', translations: { 'zh-CN': '功能对比' } },
+					],
+				},
+				{
 					label: 'Status',
 					translations: { 'zh-CN': '状态' },
 					items: [
