@@ -1,0 +1,44 @@
+/* Brand theme: teal accent matching the quicz logo ring, per color scheme.
+   --sl-color-text-accent drives prose links, sidebar active state, focus rings,
+   and (by default) the primary button background — so it must be set too. */
+:root {
+	--sl-color-accent-low: #ccfbf1;
+	--sl-color-accent: #0f766e;
+	--sl-color-accent-high: #134e4a;
+	--sl-color-text-accent: #0f766e;
+}
+
+:root[data-theme='dark'] {
+	--sl-color-accent-low: #08332f;
+	--sl-color-accent: #5eead4;
+	--sl-color-accent-high: #ccfbf1;
+	--sl-color-text-accent: #5eead4;
+}
+
+/* Primary button decoupled from text-accent so the label stays readable:
+   white text on dark teal (light mode), near-black text on bright teal (dark). */
+.sl-link-button.primary {
+	background: #0f766e;
+	border-color: #0f766e;
+	color: #fff;
+}
+
+.sl-link-button.primary:hover,
+.sl-link-button.primary:focus {
+	background: #134e4a;
+	border-color: #134e4a;
+	color: #fff;
+}
+
+:root[data-theme='dark'] .sl-link-button.primary {
+	background: #5eead4;
+	border-color: #5eead4;
+	color: #06281f;
+}
+
+:root[data-theme='dark'] .sl-link-button.primary:hover,
+:root[data-theme='dark'] .sl-link-button.primary:focus {
+	background: #99f6e4;
+	border-color: #99f6e4;
+	color: #06281f;
+}

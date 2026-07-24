@@ -15,7 +15,7 @@ export default defineConfig({
 				light: './src/assets/logo-light.svg',
 				dark: './src/assets/logo-dark.svg',
 			},
-			customCss: ['./src/styles/home.css'],
+			customCss: ['./src/styles/theme.css', './src/styles/home.css'],
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/venjiang/quicz' },
 			],
