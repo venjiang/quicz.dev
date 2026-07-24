@@ -1,0 +1,14 @@
+/* Home page two-column split: side-by-side on wide screens, stacked on phones. */
+.qz-split {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 1.5rem;
+	align-items: start;
+}
+
+@media (min-width: 768px) {
+	.qz-split {
+		grid-template-columns: 1.1fr 1fr;
+		gap: 2rem;
+	}
+}

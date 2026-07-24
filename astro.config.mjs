@@ -12,9 +12,10 @@ export default defineConfig({
 			logo: {
 				replacesTitle: false,
 				alt: 'quicz',
-				light: './src/assets/logo.svg',
-				dark: './src/assets/logo.svg',
+				light: './src/assets/logo-light.svg',
+				dark: './src/assets/logo-dark.svg',
 			},
+			customCss: ['./src/styles/home.css'],
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/venjiang/quicz' },
 			],
