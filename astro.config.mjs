@@ -43,6 +43,13 @@ export default defineConfig({
 					items: [{ label: 'Run the examples', slug: 'examples', translations: { 'zh-CN': '运行示例' } }],
 				},
 				{
+					label: 'Brand',
+					translations: { 'zh-CN': '品牌' },
+					items: [
+						{ label: 'Logo', slug: 'brand', translations: { 'zh-CN': '标志' } },
+					],
+				},
+				{
 					label: 'Reference',
 					translations: { 'zh-CN': '参考' },
 					items: [

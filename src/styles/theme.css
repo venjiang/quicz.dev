@@ -1,27 +1,28 @@
-/* One brand teal everywhere, identical in light and dark — logo, links,
-   buttons, focus, sidebar active. A single hex can't clear AA text contrast on
-   both pure-white and near-black, so #0d9488 is the balance (3.7 on white,
-   5.1 on dark). Listed under every selector Starlight may theme so the override
-   always wins. */
+/* One brand teal everywhere, identical in light and dark.
+   #10a391 is about as bright as the brand can go while white text on a solid
+   block still clears 3:1 — brighter and the white label washes out.
+   text-invert is Starlight's "text on a solid accent surface" token; it must be
+   an opaque color (a previous transparent accent-low made such text invisible). */
 :root,
 :root[data-theme='light'],
 :root[data-theme='dark'] {
-	--sl-color-accent: #0d9488;
-	--sl-color-accent-high: #0d9488;
-	--sl-color-accent-low: rgba(13, 148, 136, 0.14);
-	--sl-color-text-accent: #0d9488;
+	--sl-color-accent: #10a391;
+	--sl-color-accent-high: #10a391;
+	--sl-color-accent-low: rgba(16, 163, 145, 0.14);
+	--sl-color-text-accent: #10a391;
+	--sl-color-text-invert: #ffffff;
 }
 
-/* Primary button: same teal both themes, dark-ink label for legibility. */
+/* Primary button: solid brand teal with a white label in both themes. */
 .sl-link-button.primary {
-	background: #0d9488;
-	border-color: #0d9488;
-	color: #042f2e;
+	background: #10a391;
+	border-color: #10a391;
+	color: #fff;
 }
 
 .sl-link-button.primary:hover,
 .sl-link-button.primary:focus {
 	background: #0f766e;
 	border-color: #0f766e;
-	color: #ecfdf5;
+	color: #fff;
 }
