@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="quicz logo">
+  <!-- hexagon: connection ID -->
+  <path d="M24 3 41 12.8v19.4L24 42 7 32.2V12.8Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+  <!-- zigzag: Zig -->
+  <path d="M15 17h13l-9.5 7h14.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M33 31H20l9.5-7H15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>
+</svg>

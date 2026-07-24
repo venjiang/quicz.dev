@@ -1,0 +1,107 @@
+---
+title: quicz
+description: IETF QUIC transport implementation in pure Zig
+template: splash
+hero:
+  title: QUIC, in pure Zig
+  tagline: |
+    An experimental IETF QUIC v1 transport written from scratch in Zig.
+    Pure-Zig TLS 1.3, streams, flow control, and a handshake that has been
+    wire-verified against Go and Rust stacks.
+  actions:
+    - text: Quick start
+      link: /quick-start/
+      icon: right-arrow
+      variant: primary
+    - text: Architecture
+      link: /architecture/
+      icon: document
+      variant: minimal
+    - text: GitHub
+      link: https://github.com/venjiang/quicz
+      icon: github
+      variant: minimal
+---
+
+## Proven on the wire, not just in unit tests
+
+quicz's primary handshake and FIN-terminated stream-echo path are exercised by
+real UDP probes: loopback in-process, separate-process Zig, and
+certificate-verified clients written independently in Go and Rust.
+
+```sh
+$ zig-out/bin/quicz-tls13-process-echo-server 127.0.0.1 4443 2 concurrent-retry &
+$ (cd examples/interop/go_echo_client && \
+     go run . -addr 127.0.0.1:4443 -ca ../testdata/quicz-echo-ca.pem -server-name localhost)
+# quic-go client ↔ quicz server: TLS 1.3 handshake, then FIN-terminated
+# "hello" / "world" echoes verified on streams 0 and 4 — certificate
+# verification enabled the whole way.
+```
+
+## What the first milestone ships
+
+<div style="display:grid;grid-template-columns:1.1fr 1fr;gap:2rem;align-items:start;">
+<div>
+
+- **Pure-Zig TLS 1.3** — no C crypto dependency, no OpenSSL linkage.
+- **QUIC packet protection** — header protection and AEAD per RFC 9001.
+- **Streams and flow control** — bidirectional streams, connection- and stream-level limits.
+- **Retry, connection-ID routing, path validation** — the routing spine of a real endpoint.
+- **Loss recovery + NewReno baseline** — ACK processing and retransmission per RFC 9002.
+
+</div>
+<div>
+
+```zig
+var conn = try quicz.Connection.init(
+    std.heap.page_allocator, .client, .{
+    .initial_max_data = 65_536,
+    .initial_max_stream_data = 65_536,
+    .initial_max_streams_bidi = 16,
+});
+defer conn.deinit();
+
+const id = try conn.openStream();
+try conn.sendOnStream(id, "hello", true);
+
+var buf: [1350]u8 = undefined;
+const frame = (try conn.pollTx(0, &buf))
+    orelse return error.NoPendingFrame;
+```
+
+</div>
+</div>
+
+Full walkthrough in the [quick start](/quick-start/).
+
+## Interop matrix
+
+| Peer | Language / stack | Probe |
+| --- | --- | --- |
+| quic-go | Go | certificate-verified echo client/server |
+| quinn | Rust | certificate-verified echo client |
+| QUIC-Interop-Runner | — | handshake, transfer, retry self-test |
+| quicz (separate processes) | Zig | independent client + server over loopback UDP |
+
+Run it yourself: [examples guide](/examples/).
+
+## Honest scope
+
+| In the first milestone | Explicitly not yet |
+| --- | --- |
+| QUIC v1 transport (RFC 9000 core) | HTTP/3 and QPACK |
+| TLS 1.3 (RFC 9001), pure Zig | QUIC DATAGRAM |
+| Loss recovery + NewReno (RFC 9002) | Full QUIC v2 / compatible-version behavior |
+| Retry, path validation, CID routing | Multipath, qlog, PMTU, GSO/GRO |
+| Interop with Go/Rust stacks | Advanced congestion controllers |
+
+The authoritative status and acceptance evidence live in the
+[transport task matrix](https://github.com/venjiang/quicz/blob/main/docs/en/quic_transport_tasks.md).
+The API is stabilizing but still evolving.
+
+## Where next?
+
+- [Quick start](/quick-start/) — add quicz to your Zig build and send your first frame.
+- [Architecture](/architecture/) — how the endpoint, connection, and TLS layers fit together.
+- [Spec coverage](/spec/) — RFC 9000/9001/9002 section-by-section status.
+- [Examples](/examples/) — loopback, echo server, and Go/Rust interop commands.

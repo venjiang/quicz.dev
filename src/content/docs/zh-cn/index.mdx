@@ -1,0 +1,104 @@
+---
+title: quicz
+description: 纯 Zig 实现的 IETF QUIC 传输协议栈
+template: splash
+hero:
+  title: 纯 Zig 的 QUIC 实现
+  tagline: |
+    从零开始用 Zig 编写的实验性 IETF QUIC v1 transport。
+    纯 Zig TLS 1.3、stream、flow control，握手路径已与
+    Go 和 Rust 协议栈完成真实线路互通验证。
+  actions:
+    - text: 快速开始
+      link: /zh-cn/quick-start/
+      icon: right-arrow
+      variant: primary
+    - text: 架构
+      link: /zh-cn/architecture/
+      icon: document
+      variant: minimal
+    - text: GitHub
+      link: https://github.com/venjiang/quicz
+      icon: github
+      variant: minimal
+---
+
+## 线上验证，不只是单元测试
+
+quicz 的主握手和带 FIN 的 stream echo 路径由真实 UDP 探针覆盖：进程内 loopback、
+独立进程 Zig，以及独立实现、启用证书校验的 Go 与 Rust 客户端。
+
+```sh
+$ zig-out/bin/quicz-tls13-process-echo-server 127.0.0.1 4443 2 concurrent-retry &
+$ (cd examples/interop/go_echo_client && \
+     go run . -addr 127.0.0.1:4443 -ca ../testdata/quicz-echo-ca.pem -server-name localhost)
+# quic-go client ↔ quicz server：完成 TLS 1.3 握手，随后 stream 0 / 4 上
+# 分别验证带 FIN 的 "hello" / "world" echo —— 全程开启证书校验。
+```
+
+## 第一轮里程碑包含什么
+
+<div style="display:grid;grid-template-columns:1.1fr 1fr;gap:2rem;align-items:start;">
+<div>
+
+- **纯 Zig TLS 1.3** —— 不依赖 C 密码学库，不链接 OpenSSL。
+- **QUIC packet protection** —— 按 RFC 9001 实现 header protection 与 AEAD。
+- **Stream 与 flow control** —— 双向 stream，连接级与 stream 级限额。
+- **Retry、connection ID routing、path validation** —— 真实 endpoint 的路由骨架。
+- **Loss recovery + NewReno 基线** —— 按 RFC 9002 处理 ACK 与重传。
+
+</div>
+<div>
+
+```zig
+var conn = try quicz.Connection.init(
+    std.heap.page_allocator, .client, .{
+    .initial_max_data = 65_536,
+    .initial_max_stream_data = 65_536,
+    .initial_max_streams_bidi = 16,
+});
+defer conn.deinit();
+
+const id = try conn.openStream();
+try conn.sendOnStream(id, "hello", true);
+
+var buf: [1350]u8 = undefined;
+const frame = (try conn.pollTx(0, &buf))
+    orelse return error.NoPendingFrame;
+```
+
+</div>
+</div>
+
+完整步骤见[快速开始](/zh-cn/quick-start/)。
+
+## 互操作矩阵
+
+| 对端 | 语言 / 协议栈 | 探针 |
+| --- | --- | --- |
+| quic-go | Go | 启用证书校验的 echo client/server |
+| quinn | Rust | 启用证书校验的 echo client |
+| QUIC-Interop-Runner | — | handshake、transfer、retry 自测 |
+| quicz（独立进程） | Zig | loopback UDP 上独立 client + server |
+
+自己跑一遍：[示例指南](/zh-cn/examples/)。
+
+## 诚实的范围
+
+| 第一轮里程碑内 | 明确暂不实现 |
+| --- | --- |
+| QUIC v1 transport（RFC 9000 核心） | HTTP/3 与 QPACK |
+| TLS 1.3（RFC 9001），纯 Zig | QUIC DATAGRAM |
+| Loss recovery + NewReno（RFC 9002） | 完整 QUIC v2 / compatible-version 行为 |
+| Retry、path validation、CID routing | Multipath、qlog、PMTU、GSO/GRO |
+| 与 Go/Rust 协议栈互通 | 高级拥塞控制 |
+
+权威状态与验收证据见[传输任务矩阵](https://github.com/venjiang/quicz/blob/main/docs/zh-CN/quic_transport_tasks.md)。
+API 趋于稳定但仍在演进。
+
+## 接下来
+
+- [快速开始](/zh-cn/quick-start/) —— 把 quicz 加入 Zig 构建，发出第一个 frame。
+- [架构](/zh-cn/architecture/) —— endpoint、connection 与 TLS 层如何组合。
+- [规范覆盖](/zh-cn/spec/) —— RFC 9000/9001/9002 逐节状态。
+- [示例](/zh-cn/examples/) —— loopback、echo server 与 Go/Rust 互通命令。
