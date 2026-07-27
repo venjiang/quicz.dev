@@ -1,13 +1,13 @@
 ---
-title: 纯 Zig 实现的 IETF QUIC
-description: 纯 Zig 实现的 IETF QUIC 传输协议栈
+title: 纯 Zig 的 IETF QUIC + HTTP/3
+description: 纯 Zig 实现的 IETF QUIC 传输与 HTTP/3 协议栈
 template: splash
 hero:
-  title: 纯 Zig 的 QUIC 实现
+  title: 纯 Zig 的 QUIC + HTTP/3
   tagline: |
-    从零开始用 Zig 编写的 IETF QUIC transport —— 支持 QUIC v1 与 v2、
-    纯 Zig TLS 1.3（含 0-RTT 与后量子密钥交换）、multipath，
-    握手路径已与 Go 和 Rust 协议栈完成真实线路互通验证。
+    从零用 Zig 编写的 IETF QUIC + HTTP/3 协议栈 —— QUIC v1 与 v2、纯 Zig TLS 1.3
+    （含 0-RTT 与后量子密钥交换）、完整 HTTP/3 / QPACK / WebTransport，
+    已与 quic-go、quiche、s2n-quic 完成线路级互通验证。
   actions:
     - text: 快速开始
       link: /zh-cn/quick-start/
@@ -25,15 +25,13 @@ hero:
 
 ## 线上验证，不只是单元测试
 
-quicz 的主握手和带 FIN 的 stream echo 路径由真实 UDP 探针覆盖：进程内 loopback、
-独立进程 Zig，以及独立实现、启用证书校验的 Go 与 Rust 客户端。
+quicz 的握手与 stream 路径由真实 UDP 探针覆盖：进程内 loopback、独立进程 Zig，以及
+启用证书校验的 Go / Rust 对端。
 
 ```sh
-$ zig-out/bin/quicz-tls13-process-echo-server 127.0.0.1 4443 2 concurrent-retry &
-$ (cd examples/interop/go_echo_client && \
-     go run . -addr 127.0.0.1:4443 -ca ../testdata/quicz-echo-ca.pem -server-name localhost)
-# quic-go client ↔ quicz server：完成 TLS 1.3 握手，随后 stream 0 / 4 上
-# 分别验证带 FIN 的 "hello" / "world" echo —— 全程开启证书校验。
+$ examples/interop/run_external_interop.sh all
+# 对 quic-go (Go)、quiche (Rust)、s2n-quic (Rust) 的证书校验互通：
+# 握手 + 传输，stream 0/4 上带 FIN 的 echo —— 全程开启证书校验。
 ```
 
 ## quicz 目前已实现
@@ -41,12 +39,12 @@ $ (cd examples/interop/go_echo_client && \
 <div className="qz-split">
 <div>
 
-- **纯 Zig TLS 1.3 + 0-RTT** —— 不依赖 C 密码学库；支持后量子 X25519Kyber768。
-- **QUIC v1 与 v2 transport** —— stream、flow control、连接迁移、path validation、Retry、stateless reset、密钥更新、版本协商。
-- **DATAGRAM、multipath、ECN、PMTU、GSO/GRO**、连接池、qlog。
+- **纯 Zig TLS 1.3 + 0-RTT** —— 无 C 密码学；ECDSA P-256、X25519、X25519Kyber768（后量子）、AES-128/256-GCM、ChaCha20-Poly1305、会话恢复。
+- **QUIC v1 & v2 transport** —— stream、flow control、连接迁移、path validation、Retry、stateless reset、密钥更新、版本协商、DATAGRAM、multipath、ECN、PMTUD、GSO/GRO、连接池、qlog。
 - **Loss recovery + NewReno / CUBIC / BBR**，含报文 pacing。
-- **HTTP/3 + QPACK 静态表**、**WebTransport** 基础实现。
-- **线路级互通验证**：quic-go、quinn、QUIC-Interop-Runner。
+- **HTTP/3** —— 完整连接管理、SETTINGS、GOAWAY、stream 状态机、QPACK 静态 + 动态表。
+- **WebTransport**（完整会话管理）**+ HTTP Datagrams** (RFC 9297) **+ 流重置部分交付**。
+- **线路级互通验证**：quic-go、quiche、s2n-quic。
 
 </div>
 <div>
@@ -71,16 +69,17 @@ const frame = (try conn.pollTx(0, &buf))
 </div>
 </div>
 
-完整步骤见[快速开始](/zh-cn/quick-start/)。
+推荐入口是高层 `Endpoint → Connection → Stream` API；上面这段是低层 packet API。见
+[快速开始](/zh-cn/quick-start/)。
 
 ## 互操作矩阵
 
 | 对端 | 语言 / 协议栈 | 探针 |
 | --- | --- | --- |
-| quic-go | Go | 启用证书校验的 echo client/server |
-| quinn | Rust | 启用证书校验的 echo client |
+| quic-go | Go | 启用证书校验的 echo client/server + `run_external_interop.sh` |
+| quiche | Rust | 启用证书校验的握手 + 传输 |
+| s2n-quic | Rust | 启用证书校验的握手 + 传输 |
 | QUIC-Interop-Runner | — | handshake、transfer、retry 自测 |
-| quicz（独立进程） | Zig | loopback UDP 上独立 client + server |
 
 自己跑一遍：[示例指南](/zh-cn/examples/)。
 
@@ -93,27 +92,28 @@ const frame = (try conn.pollTx(0, &buf))
 | 传输层（19 项） | 19/19 | 14/19 | 14/19 | 19/19 |
 | 拥塞控制（4 项） | 4/4 | 4/4 | 3/4 | 4/4 |
 | 密码套件（5 项） | 5/5 | 5/5 | 5/5 | 5/5 |
-| 应用层（6 项） | 6/6 | 3/6 | 0/6 | 2/6 |
+| 应用层（6 项） | 6/6 | 3/6 | 0/6 | 6/6 |
 | 平台（3 项） | 2/3 | 0/3 | 1/3 | 1/3 |
-| **合计（37 项）** | **36/37** | **26/37** | **23/37** | **31/37** |
+| **合计（37 项）** | **36/37** | **26/37** | **23/37** | **36/37** |
 
-quicz 在传输层、拥塞控制与密码套件上领先，剩余差距集中在应用层广度。完整 37 行
-逐项对比与差距分析见[功能对比](/zh-cn/comparisons/)。
+quicz 在传输层、拥塞控制、密码套件**以及**应用层（完整 HTTP/3、QPACK、WebTransport、
+HTTP Datagrams）上已与 quic-go 持平，剩余差距仅为平台特性。完整 37 行逐项对比见
+[功能对比](/zh-cn/comparisons/)。
 
-## 部分实现 / 暂未实现
+## 不在范围内
 
-| 状态 | 能力 |
-| --- | --- |
-| 基础实现，持续完善 | HTTP/3 连接管理（GOAWAY / SETTINGS / 流生命周期）；WebTransport 会话 |
-| 暂未实现 | QPACK 动态表；HTTP Datagrams (RFC 9297)；流重置部分交付；FIPS 140-3；XDP 零拷贝 I/O |
+以下两项是某个其它协议栈独有的平台特性，不在 quicz 路线图中：
+
+- **FIPS 140-3** —— 仅 quic-go（Go 1.26+）。
+- **XDP 零拷贝 I/O** —— 仅 s2n-quic。
 
 权威状态与验收证据见[传输任务矩阵](https://github.com/venjiang/quicz/blob/main/docs/zh-CN/quic_transport_tasks.md)。
 API 趋于稳定但仍在演进。
 
 ## 接下来
 
-- [快速开始](/zh-cn/quick-start/) —— 把 quicz 加入 Zig 构建，发出第一个 frame。
+- [快速开始](/zh-cn/quick-start/) —— 用 `zig fetch` 加入 quicz，跑起第一个端点。
 - [功能对比](/zh-cn/comparisons/) —— quicz vs quic-go / quiche / s2n-quic，37 行。
 - [架构](/zh-cn/architecture/) —— endpoint、connection 与 TLS 层如何组合。
 - [规范覆盖](/zh-cn/spec/) —— RFC 9000/9001/9002 逐节状态。
-- [示例](/zh-cn/examples/) —— loopback、echo server 与 Go/Rust 互通命令。
+- [示例](/zh-cn/examples/) —— echo、DATAGRAM、后量子、0-RTT 与互通探针。

@@ -1,13 +1,13 @@
 ---
-title: IETF QUIC transport in pure Zig
-description: IETF QUIC transport implementation in pure Zig
+title: IETF QUIC + HTTP/3 in pure Zig
+description: IETF QUIC transport and HTTP/3 implementation in pure Zig
 template: splash
 hero:
-  title: QUIC, in pure Zig
+  title: QUIC + HTTP/3, in pure Zig
   tagline: |
-    An IETF QUIC transport written from scratch in Zig — QUIC v1 and v2,
-    pure-Zig TLS 1.3 with 0-RTT and post-quantum key exchange, multipath,
-    and a handshake wire-verified against Go and Rust stacks.
+    An IETF QUIC and HTTP/3 stack written from scratch in Zig — QUIC v1 and v2,
+    pure-Zig TLS 1.3 with 0-RTT and post-quantum key exchange, full HTTP/3,
+    QPACK, and WebTransport, wire-verified against quic-go, quiche, and s2n-quic.
   actions:
     - text: Quick start
       link: /quick-start/
@@ -25,17 +25,14 @@ hero:
 
 ## Proven on the wire, not just in unit tests
 
-quicz's primary handshake and FIN-terminated stream-echo path are exercised by
-real UDP probes: loopback in-process, separate-process Zig, and
-certificate-verified clients written independently in Go and Rust.
+quicz's handshake and stream paths are exercised by real UDP probes: loopback
+in-process, separate-process Zig, and certificate-verified peers in Go and Rust.
 
 ```sh
-$ zig-out/bin/quicz-tls13-process-echo-server 127.0.0.1 4443 2 concurrent-retry &
-$ (cd examples/interop/go_echo_client && \
-     go run . -addr 127.0.0.1:4443 -ca ../testdata/quicz-echo-ca.pem -server-name localhost)
-# quic-go client ↔ quicz server: TLS 1.3 handshake, then FIN-terminated
-# "hello" / "world" echoes verified on streams 0 and 4 — certificate
-# verification enabled the whole way.
+$ examples/interop/run_external_interop.sh all
+# certificate-verified interop against quic-go (Go), quiche (Rust),
+# and s2n-quic (Rust): handshake + transfer, FIN-terminated echoes on
+# streams 0 and 4 — certificate verification enabled the whole way.
 ```
 
 ## What quicz ships today
@@ -43,12 +40,12 @@ $ (cd examples/interop/go_echo_client && \
 <div className="qz-split">
 <div>
 
-- **Pure-Zig TLS 1.3 + 0-RTT** — no C crypto dependency; post-quantum X25519Kyber768.
-- **QUIC v1 and v2 transport** — streams, flow control, connection migration, path validation, Retry, stateless reset, key update, version negotiation.
-- **DATAGRAM, multipath, ECN, PMTU, GSO/GRO**, connection pooling, qlog.
+- **Pure-Zig TLS 1.3 + 0-RTT** — no C crypto; ECDSA P-256, X25519, X25519Kyber768 (post-quantum), AES-128/256-GCM, ChaCha20-Poly1305, session resumption.
+- **QUIC v1 & v2 transport** — streams, flow control, connection migration, path validation, Retry, stateless reset, key update, version negotiation, DATAGRAM, multipath, ECN, PMTUD, GSO/GRO, connection pool, qlog.
 - **Loss recovery + NewReno / CUBIC / BBR** with packet pacing.
-- **HTTP/3 + QPACK static** and **WebTransport** at a basic level.
-- **Wire-verified interop** with quic-go, quinn, and the QUIC-Interop-Runner.
+- **HTTP/3** — full connection management, SETTINGS, GOAWAY, stream state machine, QPACK static + dynamic table.
+- **WebTransport** (full session management) **+ HTTP Datagrams** (RFC 9297) **+ stream reset partial delivery**.
+- **Wire-verified interop** with quic-go, quiche, and s2n-quic.
 
 </div>
 <div>
@@ -73,16 +70,18 @@ const frame = (try conn.pollTx(0, &buf))
 </div>
 </div>
 
-Full walkthrough in the [quick start](/quick-start/).
+The high-level `Endpoint → Connection → Stream` API is the recommended entry
+point; the snippet above is the low-level packet API. See the
+[quick start](/quick-start/).
 
 ## Interop matrix
 
 | Peer | Language / stack | Probe |
 | --- | --- | --- |
-| quic-go | Go | certificate-verified echo client/server |
-| quinn | Rust | certificate-verified echo client |
+| quic-go | Go | certificate-verified echo client/server + `run_external_interop.sh` |
+| quiche | Rust | certificate-verified handshake + transfer |
+| s2n-quic | Rust | certificate-verified handshake + transfer |
 | QUIC-Interop-Runner | — | handshake, transfer, retry self-test |
-| quicz (separate processes) | Zig | independent client + server over loopback UDP |
 
 Run it yourself: [examples guide](/examples/).
 
@@ -96,20 +95,22 @@ Headline coverage:
 | Transport (19 items) | 19/19 | 14/19 | 14/19 | 19/19 |
 | Congestion (4 items) | 4/4 | 4/4 | 3/4 | 4/4 |
 | Cipher suites (5 items) | 5/5 | 5/5 | 5/5 | 5/5 |
-| Application layer (6 items) | 6/6 | 3/6 | 0/6 | 2/6 |
+| Application layer (6 items) | 6/6 | 3/6 | 0/6 | 6/6 |
 | Platform (3 items) | 2/3 | 0/3 | 1/3 | 1/3 |
-| **Total (37 items)** | **36/37** | **26/37** | **23/37** | **31/37** |
+| **Total (37 items)** | **36/37** | **26/37** | **23/37** | **36/37** |
 
-quicz leads on transport, congestion, and cipher suites; the remaining gap is
-application-layer breadth. See the [full feature-by-feature comparison](/comparisons/)
-for all 37 rows and the gap analysis.
+quicz now matches quic-go on transport, congestion, ciphers, **and** the
+application layer (full HTTP/3, QPACK, WebTransport, HTTP Datagrams). The only
+remaining gaps are platform-only features. See the
+[full feature-by-feature comparison](/comparisons/).
 
-## What's partial or not yet
+## Out of scope
 
-| Status | Capability |
-| --- | --- |
-| Basic, hardening in progress | HTTP/3 connection management (GOAWAY / SETTINGS / stream lifecycle); WebTransport sessions |
-| Not yet | QPACK dynamic table; HTTP Datagrams (RFC 9297); stream reset partial delivery; FIPS 140-3; XDP zero-copy I/O |
+These two are platform-specific features owned by a single other stack, and are
+not part of quicz's roadmap:
+
+- **FIPS 140-3** — quic-go only (Go 1.26+).
+- **XDP zero-copy I/O** — s2n-quic only.
 
 The authoritative status and acceptance evidence live in the
 [transport task matrix](https://github.com/venjiang/quicz/blob/main/docs/en/quic_transport_tasks.md).
@@ -117,8 +118,8 @@ The API is stabilizing but still evolving.
 
 ## Where next?
 
-- [Quick start](/quick-start/) — add quicz to your Zig build and send your first frame.
+- [Quick start](/quick-start/) — add quicz via `zig fetch` and run your first endpoint.
 - [Feature comparison](/comparisons/) — quicz vs quic-go / quiche / s2n-quic, 37 rows.
 - [Architecture](/architecture/) — how the endpoint, connection, and TLS layers fit together.
 - [Spec coverage](/spec/) — RFC 9000/9001/9002 section-by-section status.
-- [Examples](/examples/) — loopback, echo server, and Go/Rust interop commands.
+- [Examples](/examples/) — echo, DATAGRAM, post-quantum, 0-RTT, and interop probes.

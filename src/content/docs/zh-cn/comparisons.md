@@ -3,8 +3,8 @@ title: 功能对比
 description: quicz 与 quic-go、quiche、s2n-quic 的逐项功能对比
 ---
 
-更新时间：2026-07-24。来源：各项目 README、源码审查、RFC 合规追踪。镜像自权威的
-[传输任务矩阵](https://github.com/venjiang/quicz/blob/main/docs/zh-CN/quic_transport_tasks.md)。
+更新时间：2026-07-27。来源：各项目 README、源码审查、RFC 合规追踪。镜像自独立的
+[feature_comparison.md](https://github.com/venjiang/quicz/blob/main/docs/zh-CN/feature_comparison.md)。
 
 | 功能 | RFC | quic-go | quiche | s2n-quic | quicz | 差距 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -21,7 +21,7 @@ description: quicz 与 quic-go、quiche、s2n-quic 的逐项功能对比
 | 版本协商 | 9368 | ✅ | ✅ | ✅ | ✅ | — |
 | DATAGRAM 扩展 | 9221 | ✅ | ✅ | ✅(unstable) | ✅ | — |
 | 多路径 | draft | ✅ | ❌ | ❌ | ✅ | — |
-| ECN | 9000 | ✅ | ⚠️ 仅接收 | ✅ | ✅ | quiche 不发送 ECN |
+| ECN | 9000 | ✅ (仅接收) | ✅ | ✅ | ✅ | quiche 不发送 ECN |
 | PMTU 发现 | 8899 | ✅ | ✅ | ✅ | ✅ | — |
 | GSO/GRO | — | ✅ | ❌ | ✅ | ✅ | quiche 委托应用层 I/O |
 | 连接池 | — | ✅ | ❌ | ❌ | ✅ | — |
@@ -36,12 +36,12 @@ description: quicz 与 quic-go、quiche、s2n-quic 的逐项功能对比
 | ChaCha20-Poly1305 | 9001 | ✅ | ✅ | ✅ | ✅ | — |
 | X25519 ECDH | 8446 | ✅ | ✅ | ✅ | ✅ | — |
 | X25519Kyber768（后量子） | draft | ✅ | ✅ | ✅ | ✅ | — |
-| HTTP/3 | 9114 | ✅ | ✅ | ❌ | ⚠️ 基础 | 需完善连接管理 |
+| HTTP/3 | 9114 | ✅ | ✅ | ❌ | ✅ | 完整连接管理、Settings、GOAWAY、stream 状态机 |
 | QPACK 静态表 | 9204 | ✅ | ✅ | ❌ | ✅ | — |
-| QPACK 动态表 | 9204 | ✅ | ✅ | ❌ | ❌ | **2/3 建议实现** |
-| HTTP Datagrams | 9297 | ✅ | ❌ | ❌ | ❌ | 1/3 可选 |
-| WebTransport | draft | ✅ | ❌ | ❌ | ⚠️ 基础 | 需完善会话管理 |
-| 流重置部分交付 | draft | ✅ | ❌ | ❌ | ❌ | 仅 quic-go |
+| QPACK 动态表 | 9204 | ✅ | ✅ | ❌ | ✅ | 动态表 + encoder/decoder instructions + header block |
+| HTTP Datagrams | 9297 | ✅ | ❌ | ❌ | ✅ | Quarter Stream ID + payload 帧格式 |
+| WebTransport | draft | ✅ | ❌ | ❌ | ✅ | 完整会话管理、uni/bidi 帧、CLOSE capsule、datagram |
+| 流重置部分交付 | draft | ✅ | ❌ | ❌ | ✅ | opt-in enable_reset_partial_delivery |
 | 外部互通 | — | — | — | — | ✅ 全部通过 | — |
 | 纯语言 TLS（无 C 依赖） | — | ✅ | ❌ | ❌ | ✅ | — |
 | FIPS 140-3 | — | ✅(Go 1.26+) | ❌ | ❌ | ❌ | 仅 quic-go |
@@ -54,9 +54,9 @@ description: quicz 与 quic-go、quiche、s2n-quic 的逐项功能对比
 | 传输层（19 项） | 19/19 | 14/19 | 14/19 | 19/19 |
 | 拥塞控制（4 项） | 4/4 | 4/4 | 3/4 | 4/4 |
 | 密码套件（5 项） | 5/5 | 5/5 | 5/5 | 5/5 |
-| 应用层（6 项） | 6/6 | 3/6 | 0/6 | 2/6 |
+| 应用层（6 项） | 6/6 | 3/6 | 0/6 | 6/6 |
 | 平台（3 项） | 2/3 | 0/3 | 1/3 | 1/3 |
-| **合计（37 项）** | **36/37** | **26/37** | **23/37** | **31/37** |
+| **合计（37 项）** | **36/37** | **26/37** | **23/37** | **36/37** |
 
 ## 差距分析
 
@@ -65,15 +65,15 @@ description: quicz 与 quic-go、quiche、s2n-quic 的逐项功能对比
 1. ~~AES-256-GCM~~ — 已完成 (675e7ca)
 2. ~~X25519Kyber768~~ — 已完成 (675e7ca)
 
-**建议差距（2/3 有）：**
+**建议差距（2/3 有）— 已全部关闭：**
 
-3. **QPACK 动态表** — quic-go + quiche
-4. **完整 HTTP/3 连接管理** — GOAWAY、SETTINGS、流生命周期
+3. ~~QPACK 动态表~~ — 已完成 (c8e605c)
+4. ~~完整 HTTP/3 连接管理~~ — 已完成 (a15d22d)
 
 **可选差距（1/3 或更少）：**
 
-5. HTTP Datagrams (RFC 9297) — 仅 quic-go
-6. 完整 WebTransport 会话 — 仅 quic-go
-7. 流重置部分交付 — 仅 quic-go (draft)
+5. ~~HTTP Datagrams (RFC 9297)~~ — 已完成 (da6a670)
+6. ~~完整 WebTransport 会话~~ — 已完成 (a961f3e)
+7. ~~流重置部分交付~~ — 已完成 (8d0ef2c)
 8. FIPS 140-3 — 仅 quic-go
 9. XDP 零拷贝 I/O — 仅 s2n-quic
