@@ -1,10 +1,10 @@
 ---
 title: 性能
-description: quicz 的 loopback 吞吐与回声延迟，附跨实现参考
+description: quicz 的 loopback 吞吐与回声延迟，附带来源标注的跨实现参考
 ---
 
 secnetperf 风格的微基准，测量 loopback UDP 上的原始 QUIC 传输性能。表头数字真实且可用
-`zig build run-quic-bench` 复现；跨实现那一列是**参考上下文，不是受控排名**。
+`zig build run-quic-bench` 复现；跨实现那一列是**带来源标注的参考上下文，不是受控排名**。
 
 <div className="qz-stats">
   <div className="qz-stat"><div className="num">1.4<small> GB/s</small></div><div className="lbl">流上传 · loopback</div></div>
@@ -12,54 +12,54 @@ secnetperf 风格的微基准，测量 loopback UDP 上的原始 QUIC 传输性�
   <div className="qz-stat"><div className="num">~44<small> ms</small></div><div className="lbl">64 MB 上传 · cwnd 1.2 MB</div></div>
 </div>
 
+## 测试结果
+
+| 指标 | 数值 | 说明 |
+| --- | --- | --- |
+| 流上传（64 MB） | **~1444 MB/s (1.4 GB/s)** | 线程化 client/server，CUBIC，std.Io 异步 |
+| 发送 datagram 数 | **~102K** | 每个 1324 B，流水线 ACK 反馈 |
+| 总耗时 | **~44 ms** | cwnd 增长至 1.2 MB |
+
 ## 与其它实现的吞吐对比
 
 <div className="qz-perf">
   <div className="qz-perf-row">
     <div className="qz-perf-name">msquic<small>C · Linux</small></div>
-    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '80%' }} title="msquic — 1.5–2.5 GB/s — XDP/GSO，内核旁路" /></div>
-    <div className="qz-perf-val">1.5–2.5 GB/s</div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '60%' }} title="msquic — ~1–2 GB/s — secnetperf — XDP/GSO 内核旁路 (Linux)" /></div>
+    <div className="qz-perf-val">~1–2 GB/s</div>
   </div>
   <div className="qz-perf-row">
     <div className="qz-perf-name">quicz<small>Zig · macOS</small></div>
-    <div className="qz-perf-track"><div className="qz-perf-bar qz-self" style={{ width: '57.8%' }} title="quicz — 1.4 GB/s — 线程化 std.Io，CUBIC，无 GSO" /></div>
-    <div className="qz-perf-val">1.4 GB/s</div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-self" style={{ width: '57.8%' }} title="quicz — ~1444 MB/s — 本基准 — 线程化，macOS loopback，无 GSO" /></div>
+    <div className="qz-perf-val">~1444 MB/s</div>
   </div>
   <div className="qz-perf-row">
     <div className="qz-perf-name">s2n-quic<small>Rust · Linux</small></div>
-    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '32%' }} title="s2n-quic — ~800 MB/s — GSO/GRO" /></div>
-    <div className="qz-perf-val">~800 MB/s</div>
-  </div>
-  <div className="qz-perf-row">
-    <div className="qz-perf-name">quic-go<small>Go · Linux</small></div>
-    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '20%' }} title="quic-go — ~400–600 MB/s — GSO" /></div>
-    <div className="qz-perf-val">400–600 MB/s</div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '24%' }} title="s2n-quic — ~400–800 MB/s — TQUIC — GSO/GRO (Linux)" /></div>
+    <div className="qz-perf-val">~400–800 MB/s</div>
   </div>
   <div className="qz-perf-row">
     <div className="qz-perf-name">quiche<small>Rust · Linux</small></div>
-    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '16%' }} title="quiche — ~300–500 MB/s" /></div>
-    <div className="qz-perf-val">300–500 MB/s</div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '16%' }} title="quiche — ~300–500 MB/s — TQUIC (Linux)" /></div>
+    <div className="qz-perf-val">~300–500 MB/s</div>
   </div>
   <div className="qz-perf-row">
-    <div className="qz-perf-name">quinn<small>Rust · Linux</small></div>
-    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '16%' }} title="quinn — ~300–500 MB/s — tokio async" /></div>
-    <div className="qz-perf-val">300–500 MB/s</div>
+    <div className="qz-perf-name">quic-go<small>Go · Linux</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '12%' }} title="quic-go — ~200–400 MB/s — TQUIC — GSO (Linux)，随配置变化" /></div>
+    <div className="qz-perf-val">~200–400 MB/s</div>
   </div>
 </div>
 
-<div className="qz-perf-cap">条形用代表性数值（区间取中点）；精确值见右列。<strong>非受控对比</strong>——详见下方注意点。</div>
+<div className="qz-perf-cap">条形用代表性数值（区间取中点）；精确值与<strong>来源</strong>见下表。<strong>非受控
+对比</strong>——详见下方注意点。</div>
 
-| 实现 | 语言 | 吞吐量 | 平台 | 备注 |
-| --- | --- | --- | --- | --- |
-| msquic | C | 1.5–2.5 GB/s | Linux | XDP/GSO，内核旁路 |
-| **quicz** | **Zig** | **1.4 GB/s** | **macOS** | **线程化 std.Io，CUBIC，无 GSO** |
-| s2n-quic | Rust | ~800 MB/s | Linux | GSO/GRO |
-| quic-go | Go | ~400–600 MB/s | Linux | GSO |
-| quiche | Rust | ~300–500 MB/s | Linux | — |
-| quinn | Rust | ~300–500 MB/s | Linux | tokio async |
-
-quicz 在 macOS loopback（**无 GSO / XDP**）下达到 1.4 GB/s，接近 msquic 在 Linux 最优
-条件下的水平；msquic 的 2.5 GB/s 依赖 Linux XDP 内核旁路 + `UDP_SEGMENT`，macOS 无此能力。
+| 实现 | 语言 | Loopback 吞吐（约） | 来源 |
+| --- | --- | --- | --- |
+| quicz | Zig | ~1444 MB/s | 本基准（线程化，macOS loopback） |
+| quic-go | Go | ~200–400 MB/s | TQUIC benchmark（随配置变化） |
+| quiche | Rust | ~300–500 MB/s | TQUIC benchmark |
+| s2n-quic | Rust | ~400–800 MB/s | TQUIC benchmark |
+| msquic | C | ~1–2 GB/s | secnetperf |
 
 ## 回声延迟
 
@@ -95,11 +95,12 @@ zig build-exe -OReleaseFast --dep quicz \
 
 - **非受控对比。** quicz 数字是本仓库在 macOS 上的基准；quic-go / quiche / s2n-quic 约等于
   TQUIC 项目在 Linux 上的数字；msquic 来自 secnetperf。harness、OS、内核 I/O 路径都不同——
-  该列仅作指示性参考。
+  该列仅作带来源标注的指示性参考。
 - **quicz 此处无 GSO / XDP。** macOS 不具备；msquic 的最高值需要 Linux XDP 内核旁路 +
   `UDP_SEGMENT`。
 - **Linux + GSO 预期可进一步提升 quicz**（sendmmsg + `UDP_SEGMENT`）。
 - **loopback 仍要付内核 UDP 栈开销** —— quicz 的内存连接模型不做内核旁路，loopback 开销适用。
+- **Go / Rust 在 Linux 上受益于零拷贝 `sendmsg` 与 GSO**，本次 macOS 运行未涉及。
 
 ## 计划中的基准
 
