@@ -100,6 +100,17 @@ quicz 在传输层、拥塞控制、密码套件**以及**应用层（完整 HTT
 HTTP Datagrams）上已与 quic-go 持平，剩余差距仅为平台特性。完整 37 行逐项对比见
 [功能对比](/zh-cn/comparisons/)。
 
+## 性能
+
+<div className="qz-stats">
+  <div className="qz-stat"><div className="num">1.4<small> GB/s</small></div><div className="lbl">流上传 · loopback</div></div>
+  <div className="qz-stat"><div className="num">20.2<small> μs</small></div><div className="lbl">回声延迟 · P50</div></div>
+  <div className="qz-stat"><div className="num">~44<small> ms</small></div><div className="lbl">64 MB · cwnd 1.2 MB</div></div>
+</div>
+
+secnetperf 风格的 macOS loopback 微基准（无 GSO / XDP）；跨实现数字仅为指示性参考。完整
+吞吐条形图、延迟百分位与测试方法见[性能](/zh-cn/performance/)页。
+
 ## 不在范围内
 
 以下两项是某个其它协议栈独有的平台特性，不在 quicz 路线图中：

@@ -1,0 +1,123 @@
+---
+title: Performance
+description: Loopback throughput and echo latency for quicz, with cross-implementation context
+---
+
+A secnetperf-style micro-benchmark of raw QUIC transport over loopback UDP.
+The headline number is real and reproducible via `zig build run-quic-bench`; the
+cross-implementation column is **context, not a controlled ranking**.
+
+<div className="qz-stats">
+  <div className="qz-stat"><div className="num">1.4<small> GB/s</small></div><div className="lbl">stream upload · loopback</div></div>
+  <div className="qz-stat"><div className="num">20.2<small> μs</small></div><div className="lbl">echo latency · P50</div></div>
+  <div className="qz-stat"><div className="num">~44<small> ms</small></div><div className="lbl">64 MB upload · cwnd 1.2 MB</div></div>
+</div>
+
+## Throughput vs other implementations
+
+<div className="qz-perf">
+  <div className="qz-perf-row">
+    <div className="qz-perf-name">msquic<small>C · Linux</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '80%' }} title="msquic — 1.5–2.5 GB/s — XDP/GSO, kernel bypass" /></div>
+    <div className="qz-perf-val">1.5–2.5 GB/s</div>
+  </div>
+  <div className="qz-perf-row">
+    <div className="qz-perf-name">quicz<small>Zig · macOS</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-self" style={{ width: '57.8%' }} title="quicz — 1.4 GB/s — threaded std.Io, CUBIC, no GSO" /></div>
+    <div className="qz-perf-val">1.4 GB/s</div>
+  </div>
+  <div className="qz-perf-row">
+    <div className="qz-perf-name">s2n-quic<small>Rust · Linux</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '32%' }} title="s2n-quic — ~800 MB/s — GSO/GRO" /></div>
+    <div className="qz-perf-val">~800 MB/s</div>
+  </div>
+  <div className="qz-perf-row">
+    <div className="qz-perf-name">quic-go<small>Go · Linux</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '20%' }} title="quic-go — ~400–600 MB/s — GSO" /></div>
+    <div className="qz-perf-val">400–600 MB/s</div>
+  </div>
+  <div className="qz-perf-row">
+    <div className="qz-perf-name">quiche<small>Rust · Linux</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '16%' }} title="quiche — ~300–500 MB/s" /></div>
+    <div className="qz-perf-val">300–500 MB/s</div>
+  </div>
+  <div className="qz-perf-row">
+    <div className="qz-perf-name">quinn<small>Rust · Linux</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '16%' }} title="quinn — ~300–500 MB/s — tokio async" /></div>
+    <div className="qz-perf-val">300–500 MB/s</div>
+  </div>
+</div>
+
+<div className="qz-perf-cap">Bars use a representative value (the range midpoint for bands); exact
+figures are in the right column. <strong>Not a controlled head-to-head</strong> — see the caveats below.</div>
+
+| Implementation | Language | Throughput | Platform | Notes |
+| --- | --- | --- | --- | --- |
+| msquic | C | 1.5–2.5 GB/s | Linux | XDP/GSO, kernel bypass |
+| **quicz** | **Zig** | **1.4 GB/s** | **macOS** | **Threaded std.Io, CUBIC, no GSO** |
+| s2n-quic | Rust | ~800 MB/s | Linux | GSO/GRO |
+| quic-go | Go | ~400–600 MB/s | Linux | GSO |
+| quiche | Rust | ~300–500 MB/s | Linux | — |
+| quinn | Rust | ~300–500 MB/s | Linux | tokio async |
+
+quicz hits 1.4 GB/s on macOS loopback with **no GSO or XDP**, approaching
+msquic's best Linux numbers; msquic's 2.5 GB/s relies on Linux XDP kernel
+bypass + `UDP_SEGMENT`, which macOS does not offer.
+
+## Echo latency
+
+| Percentile | Latency | Notes |
+| --- | --- | --- |
+| P50 | **20.2 μs** | 1 KB full QUIC roundtrip (encrypt + send + recv + decrypt + echo) |
+| P99 | **62.1 μs** | |
+| P99.9 | **85.3 μs** | |
+
+5000 iterations, macOS loopback, ReleaseFast.
+
+## Methodology
+
+- **Protocol** — QUIC v1, 1-RTT installed keys (TLS handshake bypassed for a transport-only measurement).
+- **Socket** — loopback UDP, 1200-byte datagrams.
+- **Build** — `zig build-exe -OReleaseFast`.
+- **Platform** — Apple M-series, macOS, Zig 0.16.
+- **Workload** — 64 MB single-stream upload; threaded client/server; CUBIC; std.Io async; ~102K datagrams pipelined with ACK feedback.
+
+## Run it
+
+```sh
+zig build run-quic-bench
+
+# or build the ReleaseFast binary directly
+zig build-exe -OReleaseFast --dep quicz \
+  -Mroot=examples/quic_bench.zig -Mquicz=src/lib.zig \
+  --name quicz-quic-bench -femit-bin=zig-out/bin/quicz-quic-bench
+./zig-out/bin/quicz-quic-bench
+```
+
+## Reading these numbers
+
+- **Not a controlled head-to-head.** quicz's figure is this repo's benchmark on
+  macOS; the quic-go / quiche / s2n-quic figures are ≈ the TQUIC project's
+  numbers on Linux; msquic's is secnetperf. Different harnesses, OSes, and
+  kernel I/O paths — treat the column as indicative context.
+- **No GSO / XDP for quicz here.** macOS lacks them; msquic's top number needs
+  Linux XDP kernel bypass + `UDP_SEGMENT`.
+- **Linux + GSO should lift quicz further** (sendmmsg + `UDP_SEGMENT`).
+- **Loopback still pays the kernel UDP stack** — quicz's in-memory connection
+  model does no kernel bypass, so loopback overhead applies.
+
+## Planned benchmarks
+
+- [x] Echo latency (P50 / P99)
+- [ ] Multi-stream concurrency (1 / 2 / 4 / 8 / 16 streams)
+- [ ] DATAGRAM throughput (RFC 9221)
+- [ ] Loss recovery (`tc netem` 1% / 5% loss)
+- [ ] CPU utilization (`perf stat` / Instruments)
+- [ ] External interop throughput (quic-go / quiche / s2n-quic peers)
+
+## References
+
+- [TQUIC Benchmark](https://tquic.net/docs/further_readings/benchmark/) — Tencent's multi-condition QUIC benchmark
+- [QUIC Interop Runner](https://github.com/quic-interop/quic-interop-runner) — interop + throughput via pcap
+- [KIT Performance Landscape (2025)](https://doc.tm.kit.edu/2025-Examining-the-Heterogeneous-Throughput-Performance-Landscape-of-QUIC-Implementations-Koenig-et-al.pdf) — academic multi-implementation comparison
+- [secnetperf](https://github.com/microsoft/msquic/tree/main/src/perf) — Microsoft's QUIC perf tool

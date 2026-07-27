@@ -77,3 +77,19 @@ description: quicz 与 quic-go、quiche、s2n-quic 的逐项功能对比
 7. ~~流重置部分交付~~ — 已完成 (8d0ef2c)
 8. FIPS 140-3 — 仅 quic-go
 9. XDP 零拷贝 I/O — 仅 s2n-quic
+
+## 性能
+
+loopback UDP，单流上传，ReleaseFast 构建：
+
+| 实现 | 语言 | 吞吐量 | 平台 | 备注 |
+| --- | --- | --- | --- | --- |
+| msquic | C | 1.5–2.5 GB/s | Linux | XDP/GSO，内核旁路 |
+| **quicz** | **Zig** | **1.4 GB/s** | **macOS** | **线程化 std.Io，CUBIC，无 GSO** |
+| s2n-quic | Rust | ~800 MB/s | Linux | GSO/GRO |
+| quic-go | Go | ~400–600 MB/s | Linux | GSO |
+| quiche | Rust | ~300–500 MB/s | Linux | — |
+| quinn | Rust | ~300–500 MB/s | Linux | tokio async |
+
+以上数字为指示性参考，非受控对比（harness 与 OS 不同）。吞吐条形图、回声延迟（P50
+20.2 μs）、测试方法与注意点见[性能](/zh-cn/performance/)。

@@ -78,3 +78,20 @@ compliance tracking. Mirrors the standalone
 7. ~~Stream reset partial delivery~~ — DONE (8d0ef2c)
 8. FIPS 140-3 — quic-go only
 9. XDP zero-copy I/O — s2n-quic only
+
+## Performance
+
+Loopback UDP, single-stream upload, ReleaseFast build:
+
+| Implementation | Language | Throughput | Platform | Notes |
+| --- | --- | --- | --- | --- |
+| msquic | C | 1.5–2.5 GB/s | Linux | XDP/GSO, kernel bypass |
+| **quicz** | **Zig** | **1.4 GB/s** | **macOS** | **Threaded std.Io, CUBIC, no GSO** |
+| s2n-quic | Rust | ~800 MB/s | Linux | GSO/GRO |
+| quic-go | Go | ~400–600 MB/s | Linux | GSO |
+| quiche | Rust | ~300–500 MB/s | Linux | — |
+| quinn | Rust | ~300–500 MB/s | Linux | tokio async |
+
+These figures are indicative, not a controlled head-to-head (different harnesses
+and OSes). For the throughput chart, echo latency (P50 20.2 μs), methodology, and
+caveats, see [Performance](/performance/).

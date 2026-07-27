@@ -104,6 +104,18 @@ application layer (full HTTP/3, QPACK, WebTransport, HTTP Datagrams). The only
 remaining gaps are platform-only features. See the
 [full feature-by-feature comparison](/comparisons/).
 
+## Performance
+
+<div className="qz-stats">
+  <div className="qz-stat"><div className="num">1.4<small> GB/s</small></div><div className="lbl">stream upload · loopback</div></div>
+  <div className="qz-stat"><div className="num">20.2<small> μs</small></div><div className="lbl">echo latency · P50</div></div>
+  <div className="qz-stat"><div className="num">~44<small> ms</small></div><div className="lbl">64 MB · cwnd 1.2 MB</div></div>
+</div>
+
+A secnetperf-style loopback micro-benchmark on macOS (no GSO / XDP); the
+cross-implementation numbers are indicative only. The full throughput chart,
+latency percentiles, and methodology live on the [Performance](/performance/) page.
+
 ## Out of scope
 
 These two are platform-specific features owned by a single other stack, and are

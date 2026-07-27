@@ -1,0 +1,108 @@
+/* Performance page: throughput bar chart + headline stat trio. */
+.qz-stats {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1.5rem;
+	margin: 1.25rem 0 1.75rem;
+}
+
+.qz-stat {
+	flex: 1 1 150px;
+}
+
+.qz-stat .num {
+	font-size: 34px;
+	font-weight: 800;
+	letter-spacing: -0.02em;
+	line-height: 1;
+	color: #10a391;
+}
+
+.qz-stat .num small {
+	font-size: 15px;
+	font-weight: 600;
+	opacity: 0.8;
+}
+
+.qz-stat .lbl {
+	margin-top: 0.4rem;
+	font-size: 12px;
+	opacity: 0.7;
+}
+
+.qz-perf {
+	display: flex;
+	flex-direction: column;
+	gap: 0.55rem;
+	margin: 1rem 0 0.5rem;
+}
+
+.qz-perf-row {
+	display: grid;
+	grid-template-columns: 132px 1fr auto;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.qz-perf-name {
+	font-weight: 600;
+	font-size: 14px;
+}
+
+.qz-perf-name small {
+	display: block;
+	font-weight: 400;
+	font-size: 11px;
+	opacity: 0.6;
+}
+
+.qz-perf-track {
+	position: relative;
+	height: 22px;
+	border-radius: 5px;
+	background: rgba(127, 127, 127, 0.14);
+	overflow: hidden;
+}
+
+.qz-perf-bar {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	border-radius: 5px;
+	transition: filter 0.15s ease;
+}
+
+.qz-perf-bar:hover {
+	filter: brightness(1.15);
+}
+
+.qz-perf-bar.qz-self {
+	background: #10a391;
+}
+
+.qz-perf-bar.qz-other {
+	background: rgba(127, 127, 127, 0.5);
+}
+
+.qz-perf-val {
+	font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+	color: var(--sl-color-text);
+	white-space: nowrap;
+}
+
+.qz-perf-cap {
+	margin-top: 0.75rem;
+	font-size: 12px;
+	opacity: 0.72;
+}
+
+@media (max-width: 560px) {
+	.qz-perf-row {
+		grid-template-columns: 96px 1fr;
+	}
+	.qz-perf-val {
+		grid-column: 2;
+		justify-self: start;
+	}
+}

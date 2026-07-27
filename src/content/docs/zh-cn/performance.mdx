@@ -1,0 +1,118 @@
+---
+title: 性能
+description: quicz 的 loopback 吞吐与回声延迟，附跨实现参考
+---
+
+secnetperf 风格的微基准，测量 loopback UDP 上的原始 QUIC 传输性能。表头数字真实且可用
+`zig build run-quic-bench` 复现；跨实现那一列是**参考上下文，不是受控排名**。
+
+<div className="qz-stats">
+  <div className="qz-stat"><div className="num">1.4<small> GB/s</small></div><div className="lbl">流上传 · loopback</div></div>
+  <div className="qz-stat"><div className="num">20.2<small> μs</small></div><div className="lbl">回声延迟 · P50</div></div>
+  <div className="qz-stat"><div className="num">~44<small> ms</small></div><div className="lbl">64 MB 上传 · cwnd 1.2 MB</div></div>
+</div>
+
+## 与其它实现的吞吐对比
+
+<div className="qz-perf">
+  <div className="qz-perf-row">
+    <div className="qz-perf-name">msquic<small>C · Linux</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '80%' }} title="msquic — 1.5–2.5 GB/s — XDP/GSO，内核旁路" /></div>
+    <div className="qz-perf-val">1.5–2.5 GB/s</div>
+  </div>
+  <div className="qz-perf-row">
+    <div className="qz-perf-name">quicz<small>Zig · macOS</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-self" style={{ width: '57.8%' }} title="quicz — 1.4 GB/s — 线程化 std.Io，CUBIC，无 GSO" /></div>
+    <div className="qz-perf-val">1.4 GB/s</div>
+  </div>
+  <div className="qz-perf-row">
+    <div className="qz-perf-name">s2n-quic<small>Rust · Linux</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '32%' }} title="s2n-quic — ~800 MB/s — GSO/GRO" /></div>
+    <div className="qz-perf-val">~800 MB/s</div>
+  </div>
+  <div className="qz-perf-row">
+    <div className="qz-perf-name">quic-go<small>Go · Linux</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '20%' }} title="quic-go — ~400–600 MB/s — GSO" /></div>
+    <div className="qz-perf-val">400–600 MB/s</div>
+  </div>
+  <div className="qz-perf-row">
+    <div className="qz-perf-name">quiche<small>Rust · Linux</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '16%' }} title="quiche — ~300–500 MB/s" /></div>
+    <div className="qz-perf-val">300–500 MB/s</div>
+  </div>
+  <div className="qz-perf-row">
+    <div className="qz-perf-name">quinn<small>Rust · Linux</small></div>
+    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '16%' }} title="quinn — ~300–500 MB/s — tokio async" /></div>
+    <div className="qz-perf-val">300–500 MB/s</div>
+  </div>
+</div>
+
+<div className="qz-perf-cap">条形用代表性数值（区间取中点）；精确值见右列。<strong>非受控对比</strong>——详见下方注意点。</div>
+
+| 实现 | 语言 | 吞吐量 | 平台 | 备注 |
+| --- | --- | --- | --- | --- |
+| msquic | C | 1.5–2.5 GB/s | Linux | XDP/GSO，内核旁路 |
+| **quicz** | **Zig** | **1.4 GB/s** | **macOS** | **线程化 std.Io，CUBIC，无 GSO** |
+| s2n-quic | Rust | ~800 MB/s | Linux | GSO/GRO |
+| quic-go | Go | ~400–600 MB/s | Linux | GSO |
+| quiche | Rust | ~300–500 MB/s | Linux | — |
+| quinn | Rust | ~300–500 MB/s | Linux | tokio async |
+
+quicz 在 macOS loopback（**无 GSO / XDP**）下达到 1.4 GB/s，接近 msquic 在 Linux 最优
+条件下的水平；msquic 的 2.5 GB/s 依赖 Linux XDP 内核旁路 + `UDP_SEGMENT`，macOS 无此能力。
+
+## 回声延迟
+
+| 百分位 | 延迟 | 说明 |
+| --- | --- | --- |
+| P50 | **20.2 μs** | 1 KB 完整 QUIC 往返（加密 + 发送 + 接收 + 解密 + 回显） |
+| P99 | **62.1 μs** | |
+| P99.9 | **85.3 μs** | |
+
+5000 次迭代，macOS loopback，ReleaseFast。
+
+## 测试方法
+
+- **协议** —— QUIC v1，安装 1-RTT 密钥（绕过 TLS 握手，仅测传输层）。
+- **套接字** —— loopback UDP，1200 字节 datagram。
+- **构建** —— `zig build-exe -OReleaseFast`。
+- **平台** —— Apple M 系列，macOS，Zig 0.16。
+- **负载** —— 64 MB 单流上传；client/server 分线程；CUBIC；std.Io 异步；约 102K datagram 流水线 ACK 反馈。
+
+## 运行
+
+```sh
+zig build run-quic-bench
+
+# 或直接构建 ReleaseFast 二进制
+zig build-exe -OReleaseFast --dep quicz \
+  -Mroot=examples/quic_bench.zig -Mquicz=src/lib.zig \
+  --name quicz-quic-bench -femit-bin=zig-out/bin/quicz-quic-bench
+./zig-out/bin/quicz-quic-bench
+```
+
+## 如何读这些数字
+
+- **非受控对比。** quicz 数字是本仓库在 macOS 上的基准；quic-go / quiche / s2n-quic 约等于
+  TQUIC 项目在 Linux 上的数字；msquic 来自 secnetperf。harness、OS、内核 I/O 路径都不同——
+  该列仅作指示性参考。
+- **quicz 此处无 GSO / XDP。** macOS 不具备；msquic 的最高值需要 Linux XDP 内核旁路 +
+  `UDP_SEGMENT`。
+- **Linux + GSO 预期可进一步提升 quicz**（sendmmsg + `UDP_SEGMENT`）。
+- **loopback 仍要付内核 UDP 栈开销** —— quicz 的内存连接模型不做内核旁路，loopback 开销适用。
+
+## 计划中的基准
+
+- [x] 回声延迟（P50 / P99）
+- [ ] 多流并发（1 / 2 / 4 / 8 / 16 流）
+- [ ] DATAGRAM 吞吐（RFC 9221）
+- [ ] 丢包恢复（`tc netem` 1% / 5% 丢包）
+- [ ] CPU 占用（`perf stat` / Instruments）
+- [ ] 外部互通吞吐（quic-go / quiche / s2n-quic 对端）
+
+## 参考
+
+- [TQUIC Benchmark](https://tquic.net/docs/further_readings/benchmark/) —— 腾讯多条件 QUIC 基准
+- [QUIC Interop Runner](https://github.com/quic-interop/quic-interop-runner) —— 互通 + pcap 吞吐
+- [KIT 性能全景 (2025)](https://doc.tm.kit.edu/2025-Examining-the-Heterogeneous-Throughput-Performance-Landscape-of-QUIC-Implementations-Koenig-et-al.pdf) —— 学术多实现对比
+- [secnetperf](https://github.com/microsoft/msquic/tree/main/src/perf) —— 微软 QUIC 性能工具
