@@ -13,6 +13,16 @@ run 间波动 ±20%——**趋势与量级比绝对值更重要**。
   <div className="qz-stat"><div className="num">~304<small> MB/s</small></div><div className="lbl">4 流聚合</div></div>
 </div>
 
+## 两种口径
+
+| 口径 | 单流 | 握手 | 含义 |
+| --- | --- | --- | --- |
+| installed-keys，线程化 `std.Io` | ~1.94 GB/s | 旁路 | 原始传输上限（README 表头）；跳过 transport parameters 协商 |
+| 真实 TLS 1.3 握手 | ~310–440 MB/s | 真实 | 真实客户端能拿到的数字；本页表头 |
+
+installed-keys 旁路握手（即跳过 RFC 9000 §7.4 的 transport parameters 协商），
+~1.94 GB/s 应读作上限，而非面向客户端的数字。
+
 ## UDP loopback，真实握手
 
 | 指标 | 数值 | 说明 |

@@ -115,7 +115,6 @@ kernel bypass. Full per-run detail on the [Performance](/performance/) page.
 
 ## Production tuning
 
-See the repo's
-[Production Tuning Guide](https://github.com/venjiang/quicz/blob/main/docs/en/production_tuning.md)
-for recommended configuration values, PTO-jitter guidance, congestion-control
-selection, and initial-RTT tuning per deployment.
+See [Production tuning](/tuning/) for recommended configuration values,
+PTO-jitter guidance, congestion-control selection, and initial-RTT tuning per
+deployment.

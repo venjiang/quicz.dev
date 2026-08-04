@@ -112,5 +112,4 @@ quicz 的 ~390 MB/s 以**真实 TLS 1.3 握手**在 macOS（无 GSO/XDP）测得
 
 ## 生产环境调优
 
-详见仓库[生产环境调优指南](https://github.com/venjiang/quicz/blob/main/docs/zh-CN/production_tuning.md)，
-含推荐配置值、PTO jitter 使用建议、拥塞控制选择与初始 RTT 环境调优。
+详见[生产环境调优](/zh-cn/tuning/)，含推荐配置值、PTO jitter 使用建议、拥塞控制选择与初始 RTT 环境调优。

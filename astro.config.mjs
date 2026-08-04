@@ -55,6 +55,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Feature comparison', slug: 'comparisons', translations: { 'zh-CN': '功能对比' } },
 						{ label: 'Performance', slug: 'performance', translations: { 'zh-CN': '性能' } },
+						{ label: 'Production tuning', slug: 'tuning', translations: { 'zh-CN': '生产调优' } },
 					],
 				},
 				{
