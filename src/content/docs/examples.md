@@ -21,7 +21,7 @@ and `zig build --help` is the authoritative generated index.
 | `run-post-quantum-echo -- --server` | `post_quantum_echo.zig` | X25519Kyber768 post-quantum KEX + QUIC echo server. |
 | `run-post-quantum-echo -- --client` | `post_quantum_echo.zig` | Post-quantum KEX + QUIC echo client. |
 | `run-zero-rtt-echo` | `zero_rtt_echo.zig` | 0-RTT session resumption state machine (PSK, early data, replay protection). |
-| `run-congestion-bench` | `congestion_bench.zig` | Congestion control comparison: NewReno vs CUBIC vs BBR under simulated loss. |
+| `run-congestion-bench` | `congestion_bench.zig` | Congestion control comparison: NewReno vs CUBIC under simulated loss. |
 | `run-connection-migration` | `connection_migration.zig` | PATH_CHALLENGE / PATH_RESPONSE round-trip and route update. |
 
 ### Echo server + client
@@ -51,7 +51,7 @@ zig build run-post-quantum-echo -- --client
 
 ```sh
 zig build run-zero-rtt-echo         # 0-RTT state machine walkthrough
-zig build run-congestion-bench      # NewReno / CUBIC / BBR cwnd comparison
+zig build run-congestion-bench      # NewReno / CUBIC cwnd comparison
 zig build run-connection-migration  # PATH_CHALLENGE / RESPONSE demo
 ```
 
@@ -88,6 +88,8 @@ zig build run-interop-external-client -- 127.0.0.1 4433 /absolute/path/to/go-ech
 
 Core transport state (codec, flow control, stream reset, retry, CID lifecycle,
 loss/PTO recovery, …), TLS integrations (pure-Zig loopbacks, C-ABI and OpenSSL
-adapters), and the UDP lifecycle loopbacks are all registered build steps. See
+adapters), and the UDP lifecycle loopbacks are all registered build steps. The
+async `std.Io` runtime is exercised by `examples/io_echo.zig` and
+`examples/multi_conn_test.zig`. See
 [the examples guide](https://github.com/venjiang/quicz/blob/main/examples/README.md)
 for the full tables, or run `zig build --help`.

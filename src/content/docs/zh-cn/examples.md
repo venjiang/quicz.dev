@@ -20,7 +20,7 @@ description: 可运行探针 —— 实用示例、互通与完整 loopback 目�
 | `run-post-quantum-echo -- --server` | `post_quantum_echo.zig` | X25519Kyber768 后量子密钥交换 + QUIC echo 服务端。 |
 | `run-post-quantum-echo -- --client` | `post_quantum_echo.zig` | 后量子密钥交换 + QUIC echo 客户端。 |
 | `run-zero-rtt-echo` | `zero_rtt_echo.zig` | 0-RTT 会话恢复状态机（PSK、早期数据、重放保护）。 |
-| `run-congestion-bench` | `congestion_bench.zig` | 拥塞控制对比：NewReno vs CUBIC vs BBR 模拟丢包场景。 |
+| `run-congestion-bench` | `congestion_bench.zig` | 拥塞控制对比：NewReno vs CUBIC 模拟丢包场景。 |
 | `run-connection-migration` | `connection_migration.zig` | PATH_CHALLENGE / PATH_RESPONSE 往返与路由路径更新。 |
 
 ### echo 服务端 + 客户端
@@ -50,7 +50,7 @@ zig build run-post-quantum-echo -- --client
 
 ```sh
 zig build run-zero-rtt-echo         # 0-RTT 状态机完整流程
-zig build run-congestion-bench      # NewReno / CUBIC / BBR 拥塞窗口对比
+zig build run-congestion-bench      # NewReno / CUBIC 拥塞窗口对比
 zig build run-connection-migration  # PATH_CHALLENGE / RESPONSE 演示
 ```
 
@@ -87,6 +87,7 @@ zig build run-interop-external-client -- 127.0.0.1 4433 /absolute/path/to/go-ech
 
 核心 transport 状态（codec、flow control、stream reset、retry、CID 生命周期、loss/PTO
 recovery 等）、TLS 集成（纯 Zig loopback、C-ABI 与 OpenSSL adapter）、UDP lifecycle
-loopback 均为已注册的 build step。完整表格见
+loopback 均为已注册的 build step。异步 `std.Io` 运行时由 `examples/io_echo.zig` 与
+`examples/multi_conn_test.zig` 覆盖。完整表格见
 [examples 指南](https://github.com/venjiang/quicz/blob/main/examples/README_zh-CN.md)，或
 `zig build --help`。

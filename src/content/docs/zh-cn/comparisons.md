@@ -3,7 +3,8 @@ title: 功能对比
 description: quicz 与 quic-go、quiche、s2n-quic 的逐项功能对比
 ---
 
-更新时间：2026-07-27。来源：各项目 README、源码审查、RFC 合规追踪。镜像自独立的
+更新时间：2026-07-30（各行已按当前 README / 源码对齐，2026-08）。来源：各项目 README、
+源码审查、RFC 合规追踪。镜像自独立的
 [feature_comparison.md](https://github.com/venjiang/quicz/blob/main/docs/zh-CN/feature_comparison.md)。
 
 | 功能 | RFC | quic-go | quiche | s2n-quic | quicz | 差距 |
@@ -25,12 +26,17 @@ description: quicz 与 quic-go、quiche、s2n-quic 的逐项功能对比
 | PMTU 发现 | 8899 | ✅ | ✅ | ✅ | ✅ | — |
 | GSO/GRO | — | ✅ | ❌ | ✅ | ✅ | quiche 委托应用层 I/O |
 | 连接池 | — | ✅ | ❌ | ❌ | ✅ | — |
+| 异步 I/O 运行时（多连接） | — | ✅(goroutine) | ✅(tokio) | ✅(tokio) | ✅(std.Io) | std.http 模型：accept + per-conn handler |
 | qlog | draft | ✅ | ✅(feature-gated) | ❌(event subscriber) | ✅ | — |
 | Fuzz 目标 | — | ✅(OSS-Fuzz) | ✅ | ✅ | ✅ | — |
 | NewReno | 9002 | ✅ | ✅ | ❌ | ✅ | s2n-quic 仅 CUBIC+BBR |
 | CUBIC | 9438 | ✅ | ✅ | ✅ | ✅ | — |
-| BBR | — | ✅ | ✅ | ✅ | ✅ | — |
-| 报文 pacing | 9002 | ✅ | ✅ | ✅ | ✅ | — |
+| BBR | — | ✅ | ✅ | ✅ | ❌ | 2026-08 移除，改用 CUBIC（见 README） |
+| HyStart++ | draft | ❌ | ❌ | ✅ | ✅ | 慢启动 RTT 监测提前退出 |
+| PTO jitter | 9002 | ❌ | ❌ | ✅ | ✅ | 防止超时同步化 |
+| 快速重传 | 9002 | ✅ | ✅ | ✅ | ✅ | — |
+| App-limited (RFC 8312 §5.8) | 8312 | ✅ | ✅ | ✅ | ✅ | 3×MTU 阈值 |
+| 报文 pacing | 9002 | ✅ | ✅ | ✅ | ✅ | ns 精度 token bucket |
 | AES-128-GCM | 9001 | ✅ | ✅ | ✅ | ✅ | — |
 | AES-256-GCM | 9001 | ✅ | ✅ | ✅ | ✅ | — |
 | ChaCha20-Poly1305 | 9001 | ✅ | ✅ | ✅ | ✅ | — |
@@ -52,11 +58,14 @@ description: quicz 与 quic-go、quiche、s2n-quic 的逐项功能对比
 | 指标 | quic-go | quiche | s2n-quic | quicz |
 | --- | --- | --- | --- | --- |
 | 传输层（19 项） | 19/19 | 14/19 | 14/19 | 19/19 |
-| 拥塞控制（4 项） | 4/4 | 4/4 | 3/4 | 4/4 |
+| 拥塞控制（8 项） | 6/8 | 6/8 | 7/8 | 7/8 |
 | 密码套件（5 项） | 5/5 | 5/5 | 5/5 | 5/5 |
 | 应用层（6 项） | 6/6 | 3/6 | 0/6 | 6/6 |
 | 平台（3 项） | 2/3 | 0/3 | 1/3 | 1/3 |
-| **合计（37 项）** | **36/37** | **26/37** | **23/37** | **36/37** |
+| **合计（41 项）** | **38/41** | **28/41** | **27/41** | **40/41** |
+
+quicz 覆盖全部传输、密码套件与应用层能力；缺口仅为 BBR（主动移除）与平台特有的
+FIPS / XDP 两项。
 
 ## 差距分析
 
@@ -80,16 +89,28 @@ description: quicz 与 quic-go、quiche、s2n-quic 的逐项功能对比
 
 ## 性能
 
-loopback UDP，单流上传，ReleaseFast 构建：
+测试条件：loopback UDP，单流上传，ReleaseFast 构建，8.9KB datagram，100μs timeout。
+各行带来源标注；数字为指示性参考，非受控对比。
 
-| 实现 | 语言 | 吞吐量 | 平台 | 备注 |
+| 实现 | 语言 | 吞吐量 | 平台 | 来源 |
 | --- | --- | --- | --- | --- |
-| msquic | C | 1.5–2.5 GB/s | Linux | XDP/GSO，内核旁路 |
-| **quicz** | **Zig** | **1.4 GB/s** | **macOS** | **线程化 std.Io，CUBIC，无 GSO** |
-| s2n-quic | Rust | ~800 MB/s | Linux | GSO/GRO |
-| quic-go | Go | ~400–600 MB/s | Linux | GSO |
-| quiche | Rust | ~300–500 MB/s | Linux | — |
-| quinn | Rust | ~300–500 MB/s | Linux | tokio async |
+| msquic | C | ~7–8 Gbps | Windows, XDP | secnetperf dashboard |
+| msquic | C | ~3 Gbps | Linux, 无 XDP | Aalto 2025 thesis |
+| msquic | C | ~1 Gbps | macOS, loopback | secnetperf |
+| quic-go | Go | ~4 Gbps | Linux, GSO, 多流 | KIT 2025 |
+| quic-go | Go | ~1.1 Gbps | Linux, GSO | quic-go#3670 |
+| s2n-quic | Rust | ~800 MB/s | Linux, GSO/GRO | TQUIC benchmark |
+| **quicz** | **Zig** | **~390 MB/s（单流）/ ~380 MB/s（4流）** | **macOS, loopback** | 本仓库（真实握手，CUBIC，无 GSO） |
+| quiche | Rust | ~300–500 MB/s | Linux, 无 GSO | TQUIC benchmark |
+| quinn | Rust | ~300–500 MB/s | Linux, tokio | KIT 2025 / ETH thesis |
+| TQUIC | Rust | ~1–2 Gbps | Linux, GSO | TQUIC benchmark |
+| lsquic | C | ~2–4 Gbps | Linux, GSO | KIT 2025 |
+| picoquic | C | ~1–2 Gbps | Linux | KIT 2025 |
 
-以上数字为指示性参考，非受控对比（harness 与 OS 不同）。吞吐条形图、回声延迟（P50
-20.2 μs）、测试方法与注意点见[性能](/zh-cn/performance/)。
+quicz 的 ~390 MB/s 以**真实 TLS 1.3 握手**在 macOS（无 GSO/XDP）测得；其它实现的高吞吐
+依赖 Linux GSO/GRO（3–10x）或 XDP 内核旁路。逐次运行明细见[性能](/zh-cn/performance/)页。
+
+## 生产环境调优
+
+详见仓库[生产环境调优指南](https://github.com/venjiang/quicz/blob/main/docs/zh-CN/production_tuning.md)，
+含推荐配置值、PTO jitter 使用建议、拥塞控制选择与初始 RTT 环境调优。

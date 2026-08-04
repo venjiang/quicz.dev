@@ -4,7 +4,7 @@ description: Add quicz to a Zig app and run your first QUIC / HTTP/3 endpoint
 ---
 
 `quicz` is a QUIC / HTTP/3 implementation in pure [Zig](https://ziglang.org/).
-Transport and application layer are production-ready (36/37 features, 1793
+Transport and application layer are production-ready (40/41 features, 1820
 tests, three-implementation interop verified). Public APIs may still evolve.
 
 ## Requirements
@@ -115,11 +115,13 @@ has a deterministic `deinit` path.
 | `alpn` | `&.{}` | ALPN protocol identifiers |
 | `max_connections` | `0` | Max concurrent connections (0 = unlimited) |
 | `max_streams_bidi` | `100` | Max bidirectional streams per connection |
+| `max_streams_uni` | `100` | Max unidirectional streams per connection |
 | `max_idle_timeout_ms` | `30000` | Idle timeout in milliseconds |
 | `max_datagram_size` | `1350` | Max UDP payload size |
 | `initial_max_data` | `1048576` | Connection-level flow control window |
 | `initial_max_stream_data` | `262144` | Per-stream flow control window |
 | `enable_datagrams` | `false` | Enable QUIC DATAGRAM extension (RFC 9221) |
+| `max_datagram_frame_size` | `0` | Max DATAGRAM frame size (0 = disabled) |
 | `require_retry` | `false` | Require Retry for address validation (server) |
 | `ipv6` | `false` | Use IPv6 dual-stack socket |
 
@@ -134,6 +136,52 @@ has a deterministic `deinit` path.
 | `ca_cert_pem` | `null` | CA certificate for verification |
 | `insecure_skip_verify` | `false` | Skip certificate verification |
 | `handshake_timeout_ms` | `10000` | Handshake timeout |
+
+## I/O runtime (async, `std.Io`)
+
+`quicz.runtime` provides an event-driven server/client on Zig 0.16 `std.Io`
+(threaded). The server spawns an independent handler task per connection
+(std.http model); the client drives an async session.
+
+```zig
+const std = @import("std");
+const quicz = @import("quicz");
+const Server = quicz.runtime.server.Server;
+const Client = quicz.runtime.client.Client;
+
+pub fn main() !void {
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var threaded = std.Io.Threaded.init(allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    // Server: serve(handler) spawns a driving task + per-connection handlers.
+    var server = try Server.init(allocator, io, .{
+        .port = 4433,
+        .alpn = &.{"hq-interop"},
+        .cert_der = &cert_der,
+        .private_key = &key,
+    });
+    defer server.deinit();
+    try server.serve(&echoHandler); // fn(ServerConnection) std.Io.Cancelable!void
+
+    // Client: connect, send, receive via async session.
+    var client = try Client.init(allocator, io, .{
+        .server_port = 4433,
+        .server_name = "localhost",
+        .alpn = &.{"hq-interop"},
+    });
+    defer client.deinit();
+    const ok = try client.runEchoSession("hello");
+}
+```
+
+Handler signature: `fn (ServerConnection) std.Io.Cancelable!void`. Per-connection
+`ServerConnection.acceptStream()` returns a `Stream` with `receive(buf)` /
+`send(data, fin)`. See `examples/io_echo.zig` and `examples/multi_conn_test.zig`.
 
 ## Low-level API
 
@@ -151,7 +199,7 @@ defer conn.deinit();
 
 const tls13 = quicz.tls13;                 // pure-Zig TLS 1.3
 const protection = quicz.protection;       // AES-GCM, ChaCha20-Poly1305
-const cubic = quicz.cubic; const bbr = quicz.bbr; // congestion control
+const cubic = quicz.cubic;                 // congestion control (NewReno + CUBIC)
 const h3 = quicz.h3; const qpack = quicz.qpack; const webtransport = quicz.webtransport;
 const qlog = quicz.qlog;
 ```
@@ -163,14 +211,16 @@ repo for the full low-level wiring.
 
 ```sh
 zig build                                  # build the library
-zig build test --summary all               # 1793 unit tests
+zig build test --summary all               # 1820 unit tests
 zig build run-tls13-udp-loopback           # TLS 1.3 UDP loopback
 zig build run-interop-client-standalone    # interop self-test
+zig build run-quic-bench                   # throughput / latency benchmarks
 zig fmt --check build.zig src examples     # format check
 ```
 
 For runnable demos (echo, DATAGRAM, post-quantum, 0-RTT, congestion bench,
-connection migration) see the [examples guide](/examples/).
+connection migration) see the [examples guide](/examples/). Numbers behind the
+benchmarks live on the [performance](/performance/) page.
 
 ## Interop testing
 
@@ -188,6 +238,7 @@ examples/interop/run_external_interop.sh s2n-quic
 | Need | Start here |
 | --- | --- |
 | Public high-level API | [`src/quic/api.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/api.zig) |
+| Async I/O runtime | [`src/runtime/`](https://github.com/venjiang/quicz/tree/main/src/runtime) |
 | Connection state machine | [`src/quic/connection.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/connection.zig) |
 | Pure-Zig TLS 1.3 | [`src/tls/tls13.zig`](https://github.com/venjiang/quicz/blob/main/src/tls/tls13.zig) |
 | Post-quantum KEX | [`src/tls/pq_kex.zig`](https://github.com/venjiang/quicz/blob/main/src/tls/pq_kex.zig) |

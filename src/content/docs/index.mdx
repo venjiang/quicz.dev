@@ -7,7 +7,8 @@ hero:
   tagline: |
     An IETF QUIC and HTTP/3 stack written from scratch in Zig — QUIC v1 and v2,
     pure-Zig TLS 1.3 with 0-RTT and post-quantum key exchange, full HTTP/3,
-    QPACK, and WebTransport, wire-verified against quic-go, quiche, and s2n-quic.
+    QPACK, and WebTransport, an async std.Io runtime, wire-verified against
+    quic-go, quiche, and s2n-quic.
   actions:
     - text: Quick start
       link: /quick-start/
@@ -42,7 +43,8 @@ $ examples/interop/run_external_interop.sh all
 
 - **Pure-Zig TLS 1.3 + 0-RTT** — no C crypto; ECDSA P-256, X25519, X25519Kyber768 (post-quantum), AES-128/256-GCM, ChaCha20-Poly1305, session resumption.
 - **QUIC v1 & v2 transport** — streams, flow control, connection migration, path validation, Retry, stateless reset, key update, version negotiation, DATAGRAM, multipath, ECN, PMTUD, GSO/GRO, connection pool, qlog.
-- **Loss recovery + NewReno / CUBIC / BBR** with packet pacing.
+- **Loss recovery + NewReno / CUBIC** — packet pacing, HyStart++, PTO jitter, fast retransmit, app-limited detection.
+- **Async I/O runtime** — event-driven `std.Io` server/client with per-connection handlers (std.http model).
 - **HTTP/3** — full connection management, SETTINGS, GOAWAY, stream state machine, QPACK static + dynamic table.
 - **WebTransport** (full session management) **+ HTTP Datagrams** (RFC 9297) **+ stream reset partial delivery**.
 - **Wire-verified interop** with quic-go, quiche, and s2n-quic.
@@ -87,40 +89,38 @@ Run it yourself: [examples guide](/examples/).
 
 ## How quicz compares
 
-The authoritative feature matrix tracks 37 capabilities across four stacks.
+The authoritative feature matrix tracks 41 capabilities across four stacks.
 Headline coverage:
 
 | Metric | quic-go | quiche | s2n-quic | quicz |
 | --- | --- | --- | --- | --- |
 | Transport (19 items) | 19/19 | 14/19 | 14/19 | 19/19 |
-| Congestion (4 items) | 4/4 | 4/4 | 3/4 | 4/4 |
+| Congestion (8 items) | 6/8 | 6/8 | 7/8 | 7/8 |
 | Cipher suites (5 items) | 5/5 | 5/5 | 5/5 | 5/5 |
 | Application layer (6 items) | 6/6 | 3/6 | 0/6 | 6/6 |
 | Platform (3 items) | 2/3 | 0/3 | 1/3 | 1/3 |
-| **Total (37 items)** | **36/37** | **26/37** | **23/37** | **36/37** |
+| **Total (41 items)** | **38/41** | **28/41** | **27/41** | **40/41** |
 
-quicz now matches quic-go on transport, congestion, ciphers, **and** the
-application layer (full HTTP/3, QPACK, WebTransport, HTTP Datagrams). The only
-remaining gaps are platform-only features. See the
-[full feature-by-feature comparison](/comparisons/).
+quicz ships every transport, cipher-suite, and application-layer feature; the
+open items are BBR (deliberately removed) plus the platform-only FIPS / XDP
+rows. See the [full feature-by-feature comparison](/comparisons/).
 
 ## Performance
 
 <div className="qz-stats">
-  <div className="qz-stat"><div className="num">1.4<small> GB/s</small></div><div className="lbl">stream upload · loopback</div></div>
-  <div className="qz-stat"><div className="num">20.2<small> μs</small></div><div className="lbl">echo latency · P50</div></div>
-  <div className="qz-stat"><div className="num">~44<small> ms</small></div><div className="lbl">64 MB · cwnd 1.2 MB</div></div>
+  <div className="qz-stat"><div className="num">~390<small> MB/s</small></div><div className="lbl">single-stream · real handshake</div></div>
+  <div className="qz-stat"><div className="num">21.7<small> μs</small></div><div className="lbl">echo latency · P50</div></div>
+  <div className="qz-stat"><div className="num">~304<small> MB/s</small></div><div className="lbl">4-stream aggregate</div></div>
 </div>
 
-A secnetperf-style loopback micro-benchmark on macOS (no GSO / XDP); the
-cross-implementation numbers are indicative only. The full throughput chart,
-latency percentiles, and methodology live on the [Performance](/performance/) page.
+A secnetperf-style loopback micro-benchmark on macOS with a **real TLS 1.3
+handshake** (no GSO / XDP); the cross-implementation numbers are indicative only.
+The full throughput chart, latency percentiles, loss recovery, and methodology
+live on the [Performance](/performance/) page.
 
 ## Out of scope
 
-These two are platform-specific features owned by a single other stack, and are
-not part of quicz's roadmap:
-
+- **BBR** — deliberately removed in favor of CUBIC (2026-08).
 - **FIPS 140-3** — quic-go only (Go 1.26+).
 - **XDP zero-copy I/O** — s2n-quic only.
 
@@ -131,7 +131,8 @@ The API is stabilizing but still evolving.
 ## Where next?
 
 - [Quick start](/quick-start/) — add quicz via `zig fetch` and run your first endpoint.
-- [Feature comparison](/comparisons/) — quicz vs quic-go / quiche / s2n-quic, 37 rows.
+- [Feature comparison](/comparisons/) — quicz vs quic-go / quiche / s2n-quic, 41 rows.
+- [Performance](/performance/) — throughput, latency, loss recovery, CPU cost.
 - [Architecture](/architecture/) — how the endpoint, connection, and TLS layers fit together.
 - [Spec coverage](/spec/) — RFC 9000/9001/9002 section-by-section status.
 - [Examples](/examples/) — echo, DATAGRAM, post-quantum, 0-RTT, and interop probes.

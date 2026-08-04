@@ -6,8 +6,8 @@ hero:
   title: 纯 Zig 的 QUIC + HTTP/3
   tagline: |
     从零用 Zig 编写的 IETF QUIC + HTTP/3 协议栈 —— QUIC v1 与 v2、纯 Zig TLS 1.3
-    （含 0-RTT 与后量子密钥交换）、完整 HTTP/3 / QPACK / WebTransport，
-    已与 quic-go、quiche、s2n-quic 完成线路级互通验证。
+    （含 0-RTT 与后量子密钥交换）、完整 HTTP/3 / QPACK / WebTransport、异步 std.Io
+    运行时，已与 quic-go、quiche、s2n-quic 完成线路级互通验证。
   actions:
     - text: 快速开始
       link: /zh-cn/quick-start/
@@ -41,7 +41,8 @@ $ examples/interop/run_external_interop.sh all
 
 - **纯 Zig TLS 1.3 + 0-RTT** —— 无 C 密码学；ECDSA P-256、X25519、X25519Kyber768（后量子）、AES-128/256-GCM、ChaCha20-Poly1305、会话恢复。
 - **QUIC v1 & v2 transport** —— stream、flow control、连接迁移、path validation、Retry、stateless reset、密钥更新、版本协商、DATAGRAM、multipath、ECN、PMTUD、GSO/GRO、连接池、qlog。
-- **Loss recovery + NewReno / CUBIC / BBR**，含报文 pacing。
+- **Loss recovery + NewReno / CUBIC** —— 报文 pacing、HyStart++、PTO jitter、快速重传、app-limited 检测。
+- **异步 I/O 运行时** —— 事件驱动 `std.Io` server/client，每连接独立 handler（std.http 模型）。
 - **HTTP/3** —— 完整连接管理、SETTINGS、GOAWAY、stream 状态机、QPACK 静态 + 动态表。
 - **WebTransport**（完整会话管理）**+ HTTP Datagrams** (RFC 9297) **+ 流重置部分交付**。
 - **线路级互通验证**：quic-go、quiche、s2n-quic。
@@ -85,36 +86,34 @@ const frame = (try conn.pollTx(0, &buf))
 
 ## quicz 横向对比
 
-权威功能矩阵在四个协议栈上追踪 37 项能力，覆盖率汇总如下：
+权威功能矩阵在四个协议栈上追踪 41 项能力，覆盖率汇总如下：
 
 | 指标 | quic-go | quiche | s2n-quic | quicz |
 | --- | --- | --- | --- | --- |
 | 传输层（19 项） | 19/19 | 14/19 | 14/19 | 19/19 |
-| 拥塞控制（4 项） | 4/4 | 4/4 | 3/4 | 4/4 |
+| 拥塞控制（8 项） | 6/8 | 6/8 | 7/8 | 7/8 |
 | 密码套件（5 项） | 5/5 | 5/5 | 5/5 | 5/5 |
 | 应用层（6 项） | 6/6 | 3/6 | 0/6 | 6/6 |
 | 平台（3 项） | 2/3 | 0/3 | 1/3 | 1/3 |
-| **合计（37 项）** | **36/37** | **26/37** | **23/37** | **36/37** |
+| **合计（41 项）** | **38/41** | **28/41** | **27/41** | **40/41** |
 
-quicz 在传输层、拥塞控制、密码套件**以及**应用层（完整 HTTP/3、QPACK、WebTransport、
-HTTP Datagrams）上已与 quic-go 持平，剩余差距仅为平台特性。完整 37 行逐项对比见
-[功能对比](/zh-cn/comparisons/)。
+quicz 覆盖全部传输、密码套件与应用层能力（40/41）；缺口仅为 BBR（主动移除）与平台
+特有的 FIPS / XDP。完整 41 行逐项对比见[功能对比](/zh-cn/comparisons/)。
 
 ## 性能
 
 <div className="qz-stats">
-  <div className="qz-stat"><div className="num">1.4<small> GB/s</small></div><div className="lbl">流上传 · loopback</div></div>
-  <div className="qz-stat"><div className="num">20.2<small> μs</small></div><div className="lbl">回声延迟 · P50</div></div>
-  <div className="qz-stat"><div className="num">~44<small> ms</small></div><div className="lbl">64 MB · cwnd 1.2 MB</div></div>
+  <div className="qz-stat"><div className="num">~390<small> MB/s</small></div><div className="lbl">单流 · 真实握手</div></div>
+  <div className="qz-stat"><div className="num">21.7<small> μs</small></div><div className="lbl">回声延迟 · P50</div></div>
+  <div className="qz-stat"><div className="num">~304<small> MB/s</small></div><div className="lbl">4 流聚合</div></div>
 </div>
 
-secnetperf 风格的 macOS loopback 微基准（无 GSO / XDP）；跨实现数字仅为指示性参考。完整
-吞吐条形图、延迟百分位与测试方法见[性能](/zh-cn/performance/)页。
+secnetperf 风格的 macOS loopback 微基准，**真实 TLS 1.3 握手**（无 GSO / XDP）；跨实现
+数字仅为指示性参考。完整吞吐图、延迟百分位、丢包恢复与方法见[性能](/zh-cn/performance/)页。
 
 ## 不在范围内
 
-以下两项是某个其它协议栈独有的平台特性，不在 quicz 路线图中：
-
+- **BBR** —— 2026-08 主动移除，改用 CUBIC。
 - **FIPS 140-3** —— 仅 quic-go（Go 1.26+）。
 - **XDP 零拷贝 I/O** —— 仅 s2n-quic。
 
@@ -124,7 +123,8 @@ API 趋于稳定但仍在演进。
 ## 接下来
 
 - [快速开始](/zh-cn/quick-start/) —— 用 `zig fetch` 加入 quicz，跑起第一个端点。
-- [功能对比](/zh-cn/comparisons/) —— quicz vs quic-go / quiche / s2n-quic，37 行。
+- [功能对比](/zh-cn/comparisons/) —— quicz vs quic-go / quiche / s2n-quic，41 行。
+- [性能](/zh-cn/performance/) —— 吞吐、延迟、丢包恢复、CPU 开销。
 - [架构](/zh-cn/architecture/) —— endpoint、connection 与 TLS 层如何组合。
 - [规范覆盖](/zh-cn/spec/) —— RFC 9000/9001/9002 逐节状态。
 - [示例](/zh-cn/examples/) —— echo、DATAGRAM、后量子、0-RTT 与互通探针。

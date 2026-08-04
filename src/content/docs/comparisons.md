@@ -3,8 +3,9 @@ title: Feature comparison
 description: How quicz stacks up against quic-go, quiche, and s2n-quic, feature by feature
 ---
 
-Updated 2026-07-27. Sources: project READMEs, source code inspection, RFC
-compliance tracking. Mirrors the standalone
+Updated 2026-07-28 (rows reconciled to the current README / source, 2026-08).
+Sources: project READMEs, source code inspection, RFC compliance tracking.
+Mirrors the standalone
 [feature_comparison.md](https://github.com/venjiang/quicz/blob/main/docs/en/feature_comparison.md).
 
 | Feature | RFC | quic-go | quiche | s2n-quic | quicz | Gap |
@@ -26,11 +27,16 @@ compliance tracking. Mirrors the standalone
 | PMTU discovery | 8899 | ✅ | ✅ | ✅ | ✅ | — |
 | GSO/GRO | — | ✅ | ❌ | ✅ | ✅ | quiche defers to app-layer I/O |
 | Connection pool | — | ✅ | ❌ | ❌ | ✅ | — |
+| Async I/O runtime (multi-conn) | — | ✅(goroutine) | ✅(tokio) | ✅(tokio) | ✅(std.Io) | std.http model: accept + per-conn handler |
 | qlog | draft | ✅ | ✅(feature-gated) | ❌(event subscriber) | ✅ | — |
 | Fuzz targets | — | ✅(OSS-Fuzz) | ✅ | ✅ | ✅ | — |
 | NewReno | 9002 | ✅ | ✅ | ❌ | ✅ | s2n-quic: CUBIC+BBR only |
 | CUBIC | 9438 | ✅ | ✅ | ✅ | ✅ | — |
-| BBR | — | ✅ | ✅ | ✅ | ✅ | — |
+| BBR | — | ✅ | ✅ | ✅ | ❌ | removed 2026-08 in favor of CUBIC (see README) |
+| HyStart++ | draft | ❌ | ❌ | ✅ | ✅ | slow-start RTT-monitor early exit |
+| PTO jitter | 9002 | ❌ | ❌ | ✅ | ✅ | avoids timeout synchronization |
+| Fast retransmission | 9002 | ✅ | ✅ | ✅ | ✅ | — |
+| App-limited (RFC 8312 §5.8) | 8312 | ✅ | ✅ | ✅ | ✅ | 3×MTU threshold |
 | Packet pacing | 9002 | ✅ | ✅ | ✅ | ✅ | — |
 | AES-128-GCM | 9001 | ✅ | ✅ | ✅ | ✅ | — |
 | AES-256-GCM | 9001 | ✅ | ✅ | ✅ | ✅ | — |
@@ -53,11 +59,14 @@ compliance tracking. Mirrors the standalone
 | Metric | quic-go | quiche | s2n-quic | quicz |
 | --- | --- | --- | --- | --- |
 | Transport (19 items) | 19/19 | 14/19 | 14/19 | 19/19 |
-| Congestion (4 items) | 4/4 | 4/4 | 3/4 | 4/4 |
+| Congestion (8 items) | 6/8 | 6/8 | 7/8 | 7/8 |
 | Cipher suites (5 items) | 5/5 | 5/5 | 5/5 | 5/5 |
 | Application layer (6 items) | 6/6 | 3/6 | 0/6 | 6/6 |
 | Platform (3 items) | 2/3 | 0/3 | 1/3 | 1/3 |
-| **Total (37 items)** | **36/37** | **26/37** | **23/37** | **36/37** |
+| **Total (41 items)** | **38/41** | **28/41** | **27/41** | **40/41** |
+
+quicz ships every transport, cipher, and application-layer feature; the open
+items are BBR (deliberately removed) plus the platform-only FIPS / XDP rows.
 
 ## Gap analysis
 
@@ -81,17 +90,32 @@ compliance tracking. Mirrors the standalone
 
 ## Performance
 
-Loopback UDP, single-stream upload, ReleaseFast build:
+Test conditions: loopback UDP, single-stream upload, ReleaseFast build, 8.9 KB
+datagram, 100 μs timeout. Sources are attributed per row; figures are indicative,
+not a controlled head-to-head.
 
-| Implementation | Language | Throughput | Platform | Notes |
+| Implementation | Language | Throughput | Platform | Source |
 | --- | --- | --- | --- | --- |
-| msquic | C | 1.5–2.5 GB/s | Linux | XDP/GSO, kernel bypass |
-| **quicz** | **Zig** | **1.4 GB/s** | **macOS** | **Threaded std.Io, CUBIC, no GSO** |
-| s2n-quic | Rust | ~800 MB/s | Linux | GSO/GRO |
-| quic-go | Go | ~400–600 MB/s | Linux | GSO |
-| quiche | Rust | ~300–500 MB/s | Linux | — |
-| quinn | Rust | ~300–500 MB/s | Linux | tokio async |
+| msquic | C | ~7–8 Gbps | Windows, XDP | secnetperf dashboard |
+| msquic | C | ~3 Gbps | Linux, no XDP | Aalto 2025 thesis |
+| msquic | C | ~1 Gbps | macOS, loopback | secnetperf |
+| quic-go | Go | ~4 Gbps | Linux, GSO, multi-stream | KIT 2025 |
+| quic-go | Go | ~1.1 Gbps | Linux, GSO | quic-go#3670 |
+| s2n-quic | Rust | ~800 MB/s | Linux, GSO/GRO | TQUIC benchmark |
+| **quicz** | **Zig** | **~390 MB/s (single) / ~380 MB/s (4-stream)** | **macOS, loopback** | this repo (real handshake, CUBIC, no GSO) |
+| quiche | Rust | ~300–500 MB/s | Linux, no GSO | TQUIC benchmark |
+| quinn | Rust | ~300–500 MB/s | Linux, tokio | KIT 2025 / ETH thesis |
+| TQUIC | Rust | ~1–2 Gbps | Linux, GSO | TQUIC benchmark |
+| lsquic | C | ~2–4 Gbps | Linux, GSO | KIT 2025 |
+| picoquic | C | ~1–2 Gbps | Linux | KIT 2025 |
 
-These figures are indicative, not a controlled head-to-head (different harnesses
-and OSes). For the throughput chart, echo latency (P50 20.2 μs), methodology, and
-caveats, see [Performance](/performance/).
+quicz's ~390 MB/s is measured with a **real TLS 1.3 handshake** on macOS (no
+GSO/XDP); the high numbers elsewhere lean on Linux GSO/GRO (3–10×) or XDP
+kernel bypass. Full per-run detail on the [Performance](/performance/) page.
+
+## Production tuning
+
+See the repo's
+[Production Tuning Guide](https://github.com/venjiang/quicz/blob/main/docs/en/production_tuning.md)
+for recommended configuration values, PTO-jitter guidance, congestion-control
+selection, and initial-RTT tuning per deployment.
