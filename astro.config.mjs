@@ -63,6 +63,7 @@ export default defineConfig({
 					label: 'Status',
 					translations: { 'zh-CN': '状态' },
 					items: [
+						{ label: 'Status', slug: 'status', translations: { 'zh-CN': '状态' } },
 						{
 							label: 'Task matrix',
 							link: 'https://github.com/venjiang/quicz/blob/main/docs/en/quic_transport_tasks.md',
