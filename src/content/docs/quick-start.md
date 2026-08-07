@@ -7,6 +7,11 @@ description: Add quicz to a Zig app and run your first QUIC / HTTP/3 endpoint
 Transport and application layer are production-ready (40/41 features, 1820
 tests, three-implementation interop verified). Public APIs may still evolve.
 
+The recommended production API is the **async `std.Io` runtime**
+(`quicz.runtime`): an event-driven server with per-connection handlers and an
+async client. The `Endpoint → Connection → Stream` API and the low-level packet
+API remain available.
+
 ## Requirements
 
 - Zig **0.16.0**
@@ -24,10 +29,82 @@ const quicz_dep = b.dependency("quicz", .{ .target = target, .optimize = optimiz
 exe.root_module.addImport("quicz", quicz_dep.module("quicz"));
 ```
 
-## High-level API
+## I/O runtime (async, `std.Io`)
 
-The recommended entry point is the three-layer `Endpoint → Connection → Stream`
-API (`quicz.api`), which mirrors quic-go / s2n-quic.
+`quicz.runtime` provides an event-driven server/client on Zig 0.16 `std.Io`
+(threaded). The server spawns an independent handler task per connection
+(std.http model); the client drives an async session.
+
+### Server (echo)
+
+```zig
+const std = @import("std");
+const quicz = @import("quicz");
+const Server = quicz.runtime.server.Server;
+
+pub fn main() !void {
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var threaded = std.Io.Threaded.init(allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var server = try Server.init(allocator, io, .{
+        .port = 4433,
+        .alpn = &.{"hq-interop"},
+        .cert_der = &cert_der,
+        .private_key = &key,
+    });
+    defer server.deinit();
+    try server.serve(&echoHandler); // fn(ServerConnection) std.Io.Cancelable!void
+}
+
+fn echoHandler(conn: quicz.runtime.server.ServerConnection) std.Io.Cancelable!void {
+    while (true) {
+        var stream = (try conn.acceptStream()) orelse break;
+        var buf: [4096]u8 = undefined;
+        const n = try stream.receive(&buf);
+        try stream.send(buf[0..n], .{ .fin = true });
+    }
+}
+```
+
+### Client
+
+```zig
+const std = @import("std");
+const quicz = @import("quicz");
+const Client = quicz.runtime.client.Client;
+
+pub fn main() !void {
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var threaded = std.Io.Threaded.init(allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var client = try Client.init(allocator, io, .{
+        .server_port = 4433,
+        .server_name = "localhost",
+        .alpn = &.{"hq-interop"},
+    });
+    defer client.deinit();
+    const ok = try client.runEchoSession("hello");
+}
+```
+
+Handler signature: `fn (ServerConnection) std.Io.Cancelable!void`. Per-connection
+`ServerConnection.acceptStream()` returns a `Stream` with `receive(buf)` /
+`send(data, fin)`. See `examples/io_echo.zig` and `examples/multi_conn_test.zig`.
+
+## Endpoint API (alternative)
+
+The three-layer `Endpoint → Connection → Stream` API (`quicz.api`) mirrors
+quic-go / s2n-quic and works without the async runtime.
 
 ### Server (echo)
 
@@ -137,52 +214,6 @@ has a deterministic `deinit` path.
 | `insecure_skip_verify` | `false` | Skip certificate verification |
 | `handshake_timeout_ms` | `10000` | Handshake timeout |
 
-## I/O runtime (async, `std.Io`)
-
-`quicz.runtime` provides an event-driven server/client on Zig 0.16 `std.Io`
-(threaded). The server spawns an independent handler task per connection
-(std.http model); the client drives an async session.
-
-```zig
-const std = @import("std");
-const quicz = @import("quicz");
-const Server = quicz.runtime.server.Server;
-const Client = quicz.runtime.client.Client;
-
-pub fn main() !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    var threaded = std.Io.Threaded.init(allocator, .{});
-    defer threaded.deinit();
-    const io = threaded.io();
-
-    // Server: serve(handler) spawns a driving task + per-connection handlers.
-    var server = try Server.init(allocator, io, .{
-        .port = 4433,
-        .alpn = &.{"hq-interop"},
-        .cert_der = &cert_der,
-        .private_key = &key,
-    });
-    defer server.deinit();
-    try server.serve(&echoHandler); // fn(ServerConnection) std.Io.Cancelable!void
-
-    // Client: connect, send, receive via async session.
-    var client = try Client.init(allocator, io, .{
-        .server_port = 4433,
-        .server_name = "localhost",
-        .alpn = &.{"hq-interop"},
-    });
-    defer client.deinit();
-    const ok = try client.runEchoSession("hello");
-}
-```
-
-Handler signature: `fn (ServerConnection) std.Io.Cancelable!void`. Per-connection
-`ServerConnection.acceptStream()` returns a `Stream` with `receive(buf)` /
-`send(data, fin)`. See `examples/io_echo.zig` and `examples/multi_conn_test.zig`.
-
 ## Low-level API
 
 For fine-grained packet processing, TLS-backend driving, or custom endpoint
@@ -257,15 +288,15 @@ and test references. See the [threat model](/security/) page.
 
 | Need | Start here |
 | --- | --- |
-| Public high-level API | [`src/quic/api.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/api.zig) |
 | Async I/O runtime | [`src/runtime/`](https://github.com/venjiang/quicz/tree/main/src/runtime) |
+| Public high-level API | [`src/quic/api.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/api.zig) |
 | Connection state machine | [`src/quic/connection.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/connection.zig) |
 | Pure-Zig TLS 1.3 | [`src/tls/tls13.zig`](https://github.com/venjiang/quicz/blob/main/src/tls/tls13.zig) |
 | Post-quantum KEX | [`src/tls/pq_kex.zig`](https://github.com/venjiang/quicz/blob/main/src/tls/pq_kex.zig) |
 | Endpoint routing / lifecycle | [`src/quic/endpoint.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/endpoint.zig) |
 | HTTP/3 / QPACK / WebTransport | [`src/h3/`](https://github.com/venjiang/quicz/tree/main/src/h3) |
 | Runnable examples | [`examples/`](https://github.com/venjiang/quicz/tree/main/examples) |
-| Protocol status & evidence | [transport task matrix](https://github.com/venjiang/quicz/blob/main/docs/en/quic_transport_tasks.md) |
+| Protocol status & evidence | [status](/status/) |
 
 ## License
 

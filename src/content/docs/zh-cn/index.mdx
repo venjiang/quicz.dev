@@ -51,26 +51,32 @@ $ examples/interop/run_external_interop.sh all
 <div>
 
 ```zig
-var conn = try quicz.Connection.init(
-    std.heap.page_allocator, .client, .{
-    .initial_max_data = 65_536,
-    .initial_max_stream_data = 65_536,
-    .initial_max_streams_bidi = 16,
-});
-defer conn.deinit();
+const std = @import("std");
+const quicz = @import("quicz");
+const Client = quicz.runtime.client.Client;
 
-const id = try conn.openStream();
-try conn.sendOnStream(id, "hello", true);
+pub fn main() !void {
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
+    var io_ = std.Io.Threaded.init(gpa.allocator(), .{});
+    defer io_.deinit();
+    const io = io_.io();
 
-var buf: [1350]u8 = undefined;
-const frame = (try conn.pollTx(0, &buf))
-    orelse return error.NoPendingFrame;
+    var client = try Client.init(gpa.allocator(), io, .{
+        .server_port = 4433,
+        .server_name = "localhost",
+        .alpn = &.{"hq-interop"},
+    });
+    defer client.deinit();
+    _ = try client.runEchoSession("hello");
+}
 ```
 
 </div>
 </div>
 
-推荐入口是高层 `Endpoint → Connection → Stream` API；上面这段是低层 packet API。见
+推荐生产 API 是**异步 `std.Io` 运行时**（`quicz.runtime`）——事件驱动 server + 每连接
+独立 handler、async client 会话。低层 `Connection` packet API 供精细控制使用。见
 [快速开始](/zh-cn/quick-start/)。
 
 ## 互操作矩阵

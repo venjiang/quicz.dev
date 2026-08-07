@@ -53,28 +53,34 @@ $ examples/interop/run_external_interop.sh all
 <div>
 
 ```zig
-var conn = try quicz.Connection.init(
-    std.heap.page_allocator, .client, .{
-    .initial_max_data = 65_536,
-    .initial_max_stream_data = 65_536,
-    .initial_max_streams_bidi = 16,
-});
-defer conn.deinit();
+const std = @import("std");
+const quicz = @import("quicz");
+const Client = quicz.runtime.client.Client;
 
-const id = try conn.openStream();
-try conn.sendOnStream(id, "hello", true);
+pub fn main() !void {
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
+    var io_ = std.Io.Threaded.init(gpa.allocator(), .{});
+    defer io_.deinit();
+    const io = io_.io();
 
-var buf: [1350]u8 = undefined;
-const frame = (try conn.pollTx(0, &buf))
-    orelse return error.NoPendingFrame;
+    var client = try Client.init(gpa.allocator(), io, .{
+        .server_port = 4433,
+        .server_name = "localhost",
+        .alpn = &.{"hq-interop"},
+    });
+    defer client.deinit();
+    _ = try client.runEchoSession("hello");
+}
 ```
 
 </div>
 </div>
 
-The high-level `Endpoint → Connection → Stream` API is the recommended entry
-point; the snippet above is the low-level packet API. See the
-[quick start](/quick-start/).
+The **async `std.Io` runtime** (`quicz.runtime`) is the recommended production
+API — event-driven server with per-connection handlers, async client sessions.
+The low-level `Connection` packet API is available for fine-grained control. See
+the [quick start](/quick-start/).
 
 ## Interop matrix
 

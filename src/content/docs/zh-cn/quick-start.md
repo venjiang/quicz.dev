@@ -6,6 +6,10 @@ description: 把 quicz 加入 Zig 应用，跑起第一个 QUIC / HTTP/3 端点
 `quicz` 是纯 [Zig](https://ziglang.org/)（0.16）实现的 QUIC / HTTP/3。传输层与应用层
 已生产可用（40/41 功能、1820 测试、三实现互通验证）。公开 API 仍可能演进。
 
+推荐的生产 API 是**异步 `std.Io` 运行时**（`quicz.runtime`）：事件驱动 server + 每连接
+独立 handler、async client 会话。`Endpoint → Connection → Stream` API 与低层 packet API
+仍可用。
+
 ## 环境要求
 
 - Zig **0.16.0**
@@ -23,10 +27,81 @@ const quicz_dep = b.dependency("quicz", .{ .target = target, .optimize = optimiz
 exe.root_module.addImport("quicz", quicz_dep.module("quicz"));
 ```
 
-## 高层 API
+## I/O 运行时（async，`std.Io`）
 
-推荐入口是三层 `Endpoint → Connection → Stream` API（`quicz.api`），与 quic-go /
-s2n-quic 同模式。
+`quicz.runtime` 提供基于 Zig 0.16 `std.Io`（线程化）的事件驱动 server/client。server 按
+连接 spawn 独立 handler task（std.http 模型）；client 驱动 async 会话。
+
+### 服务端（echo）
+
+```zig
+const std = @import("std");
+const quicz = @import("quicz");
+const Server = quicz.runtime.server.Server;
+
+pub fn main() !void {
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var threaded = std.Io.Threaded.init(allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var server = try Server.init(allocator, io, .{
+        .port = 4433,
+        .alpn = &.{"hq-interop"},
+        .cert_der = &cert_der,
+        .private_key = &key,
+    });
+    defer server.deinit();
+    try server.serve(&echoHandler); // fn(ServerConnection) std.Io.Cancelable!void
+}
+
+fn echoHandler(conn: quicz.runtime.server.ServerConnection) std.Io.Cancelable!void {
+    while (true) {
+        var stream = (try conn.acceptStream()) orelse break;
+        var buf: [4096]u8 = undefined;
+        const n = try stream.receive(&buf);
+        try stream.send(buf[0..n], .{ .fin = true });
+    }
+}
+```
+
+### 客户端
+
+```zig
+const std = @import("std");
+const quicz = @import("quicz");
+const Client = quicz.runtime.client.Client;
+
+pub fn main() !void {
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var threaded = std.Io.Threaded.init(allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var client = try Client.init(allocator, io, .{
+        .server_port = 4433,
+        .server_name = "localhost",
+        .alpn = &.{"hq-interop"},
+    });
+    defer client.deinit();
+    const ok = try client.runEchoSession("hello");
+}
+```
+
+handler 签名：`fn (ServerConnection) std.Io.Cancelable!void`。每连接
+`ServerConnection.acceptStream()` 返回 `Stream`，提供 `receive(buf)` / `send(data, fin)`。
+见 `examples/io_echo.zig` 和 `examples/multi_conn_test.zig`。
+
+## Endpoint API（备选）
+
+三层 `Endpoint → Connection → Stream` API（`quicz.api`）与 quic-go / s2n-quic 同模式，
+无需 async runtime 即可使用。
 
 ### 服务端（echo）
 
@@ -99,51 +174,6 @@ pub fn main() !void {
 | 连接 | `Connection.openStream/acceptStream/close` | `Conn.OpenStream/AcceptStream` | `connection.open_bidirectional_stream` | `Connection.openStream` |
 | 流 | `Stream.read/write/reset/close` | `Stream.Read/Write/Close` | `stream.send/receive` | `ReceiveStream.read / SendStream.write` |
 
-## I/O 运行时（async，`std.Io`）
-
-`quicz.runtime` 提供基于 Zig 0.16 `std.Io`（线程化）的事件驱动 server/client。server 按
-连接 spawn 独立 handler task（std.http 模型）；client 驱动 async 会话。
-
-```zig
-const std = @import("std");
-const quicz = @import("quicz");
-const Server = quicz.runtime.server.Server;
-const Client = quicz.runtime.client.Client;
-
-pub fn main() !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    var threaded = std.Io.Threaded.init(allocator, .{});
-    defer threaded.deinit();
-    const io = threaded.io();
-
-    // Server：serve(handler) 启动 driving task + 每连接 handler。
-    var server = try Server.init(allocator, io, .{
-        .port = 4433,
-        .alpn = &.{"hq-interop"},
-        .cert_der = &cert_der,
-        .private_key = &key,
-    });
-    defer server.deinit();
-    try server.serve(&echoHandler); // fn(ServerConnection) std.Io.Cancelable!void
-
-    // Client：connect、send、receive 通过 async 会话。
-    var client = try Client.init(allocator, io, .{
-        .server_port = 4433,
-        .server_name = "localhost",
-        .alpn = &.{"hq-interop"},
-    });
-    defer client.deinit();
-    const ok = try client.runEchoSession("hello");
-}
-```
-
-handler 签名：`fn (ServerConnection) std.Io.Cancelable!void`。每连接
-`ServerConnection.acceptStream()` 返回 `Stream`，提供 `receive(buf)` / `send(data, fin)`。
-见 `examples/io_echo.zig` 和 `examples/multi_conn_test.zig`。
-
 ## 低层 API
 
 需要更精细控制时，内部模块同样公开：
@@ -208,15 +238,15 @@ examples/interop/run_reverse_interop.sh all 4433
 
 | 需求 | 入口 |
 | --- | --- |
-| 公开高层 API | [`src/quic/api.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/api.zig) |
 | 异步 I/O 运行时 | [`src/runtime/`](https://github.com/venjiang/quicz/tree/main/src/runtime) |
+| 公开高层 API | [`src/quic/api.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/api.zig) |
 | 连接状态机 | [`src/quic/connection.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/connection.zig) |
 | 纯 Zig TLS 1.3 | [`src/tls/tls13.zig`](https://github.com/venjiang/quicz/blob/main/src/tls/tls13.zig) |
 | 后量子 KEX | [`src/tls/pq_kex.zig`](https://github.com/venjiang/quicz/blob/main/src/tls/pq_kex.zig) |
 | 端点路由 / 生命周期 | [`src/quic/endpoint.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/endpoint.zig) |
 | HTTP/3 / QPACK / WebTransport | [`src/h3/`](https://github.com/venjiang/quicz/tree/main/src/h3) |
 | 可运行示例 | [`examples/`](https://github.com/venjiang/quicz/tree/main/examples) |
-| 协议状态与验收证据 | [传输任务矩阵](https://github.com/venjiang/quicz/blob/main/docs/zh-CN/quic_transport_tasks.md) |
+| 协议状态与证据 | [状态](/zh-cn/status/) |
 
 ## 许可证
 
