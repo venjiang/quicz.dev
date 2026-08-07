@@ -90,28 +90,8 @@ items are BBR (deliberately removed) plus the platform-only FIPS / XDP rows.
 
 ## Performance
 
-Test conditions: loopback UDP, single-stream upload, ReleaseFast build, 8.9 KB
-datagram, 100 μs timeout. Sources are attributed per row; figures are indicative,
-not a controlled head-to-head.
-
-| Implementation | Language | Throughput | Platform | Source |
-| --- | --- | --- | --- | --- |
-| msquic | C | ~7–8 Gbps | Windows, XDP | secnetperf dashboard |
-| msquic | C | ~3 Gbps | Linux, no XDP | Aalto 2025 thesis |
-| msquic | C | ~1 Gbps | macOS, loopback | secnetperf |
-| quic-go | Go | ~4 Gbps | Linux, GSO, multi-stream | KIT 2025 |
-| quic-go | Go | ~1.1 Gbps | Linux, GSO | quic-go#3670 |
-| s2n-quic | Rust | ~800 MB/s | Linux, GSO/GRO | TQUIC benchmark |
-| **quicz** | **Zig** | **~390 MB/s (single) / ~380 MB/s (4-stream)** | **macOS, loopback** | this repo (real handshake, CUBIC, no GSO) |
-| quiche | Rust | ~300–500 MB/s | Linux, no GSO | TQUIC benchmark |
-| quinn | Rust | ~300–500 MB/s | Linux, tokio | KIT 2025 / ETH thesis |
-| TQUIC | Rust | ~1–2 Gbps | Linux, GSO | TQUIC benchmark |
-| lsquic | C | ~2–4 Gbps | Linux, GSO | KIT 2025 |
-| picoquic | C | ~1–2 Gbps | Linux | KIT 2025 |
-
-quicz's ~390 MB/s is measured with a **real TLS 1.3 handshake** on macOS (no
-GSO/XDP); the high numbers elsewhere lean on Linux GSO/GRO (3–10×) or XDP
-kernel bypass. Full per-run detail on the [Performance](/performance/) page.
+quicz's own measured numbers (first-party: real-handshake throughput, latency,
+loss recovery, CPU) live on the [Performance](/performance/) page.
 
 ## Production tuning
 

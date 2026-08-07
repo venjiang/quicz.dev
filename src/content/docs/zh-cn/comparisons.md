@@ -89,26 +89,7 @@ FIPS / XDP 两项。
 
 ## 性能
 
-测试条件：loopback UDP，单流上传，ReleaseFast 构建，8.9KB datagram，100μs timeout。
-各行带来源标注；数字为指示性参考，非受控对比。
-
-| 实现 | 语言 | 吞吐量 | 平台 | 来源 |
-| --- | --- | --- | --- | --- |
-| msquic | C | ~7–8 Gbps | Windows, XDP | secnetperf dashboard |
-| msquic | C | ~3 Gbps | Linux, 无 XDP | Aalto 2025 thesis |
-| msquic | C | ~1 Gbps | macOS, loopback | secnetperf |
-| quic-go | Go | ~4 Gbps | Linux, GSO, 多流 | KIT 2025 |
-| quic-go | Go | ~1.1 Gbps | Linux, GSO | quic-go#3670 |
-| s2n-quic | Rust | ~800 MB/s | Linux, GSO/GRO | TQUIC benchmark |
-| **quicz** | **Zig** | **~390 MB/s（单流）/ ~380 MB/s（4流）** | **macOS, loopback** | 本仓库（真实握手，CUBIC，无 GSO） |
-| quiche | Rust | ~300–500 MB/s | Linux, 无 GSO | TQUIC benchmark |
-| quinn | Rust | ~300–500 MB/s | Linux, tokio | KIT 2025 / ETH thesis |
-| TQUIC | Rust | ~1–2 Gbps | Linux, GSO | TQUIC benchmark |
-| lsquic | C | ~2–4 Gbps | Linux, GSO | KIT 2025 |
-| picoquic | C | ~1–2 Gbps | Linux | KIT 2025 |
-
-quicz 的 ~390 MB/s 以**真实 TLS 1.3 握手**在 macOS（无 GSO/XDP）测得；其它实现的高吞吐
-依赖 Linux GSO/GRO（3–10x）或 XDP 内核旁路。逐次运行明细见[性能](/zh-cn/performance/)页。
+quicz 一手实测数字（真实握手吞吐、延迟、丢包恢复、CPU）见[性能](/zh-cn/performance/)页。
 
 ## 生产环境调优
 
