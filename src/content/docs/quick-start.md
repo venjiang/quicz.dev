@@ -224,14 +224,34 @@ benchmarks live on the [performance](/performance/) page.
 
 ## Interop testing
 
-quicz passes certificate-verified interop against quic-go, quiche, and s2n-quic:
+quicz passes a full **bidirectional interop matrix (7/7)** against quic-go,
+quiche, s2n-quic, and quinn. All tests use certificate-verified TLS 1.3 with a
+proper CA + CA-signed leaf, so strict webpki clients (s2n-quic, rustls/quinn)
+accept the trust chain.
+
+| Direction | Peer | Result |
+| --- | --- | --- |
+| Forward (quicz client → server) | quic-go / quiche / s2n-quic | echo_bytes=19, cert verified |
+| Reverse (client → quicz server) | quic-go / quinn / quiche / s2n-quic | echo_streams=2, echo_bytes=10 |
 
 ```sh
-examples/interop/run_external_interop.sh all        # requires Go + Rust toolchains
-examples/interop/run_external_interop.sh quic-go
-examples/interop/run_external_interop.sh quiche
-examples/interop/run_external_interop.sh s2n-quic
+# Start the quicz runtime server
+zig build && zig-out/bin/quicz-interop-runtime-server 4433 cert.pem key.pem
+
+# Forward: quicz client → external server
+zig-out/bin/quicz-interop-runtime-client 127.0.0.1 4433 quicz-echo-ca.pem localhost
+
+# Reverse matrix (external clients → quicz server), all four peers
+examples/interop/run_reverse_interop.sh all 4433
 ```
+
+## Security
+
+[`THREAT_MODEL.md`](https://github.com/venjiang/quicz/blob/main/THREAT_MODEL.md)
+documents the trust boundary and the defenses against in-scope attacks
+(amplification, packet injection, stateless reset token guessing, version
+downgrade, hostile transport parameters, Retry token forgery), each with code
+and test references. See the [threat model](/security/) page.
 
 ## Development map
 

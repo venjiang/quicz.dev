@@ -125,15 +125,18 @@ sys CPU 高来自每包 UDP `sendto`/`recvfrom` 系统调用；吞吐受 ACK 时
 ## 运行
 
 ```sh
-# UDP loopback 基准（线程化，真实握手）
-zig build run-quic-bench
+# 标准化套件：以 ReleaseFast 构建每个基准，按固定顺序全跑，并把平台/commit 元数据
+# 与完整输出记到 bench_results/<UTC 时间戳>_<commit>.log（已提交结果做基线）
+scripts/run_bench_suite.sh
+zig build bench-suite        # 同顺序，不记录结果
 
-# 内存直连基准（单线程，无 UDP 开销）
-zig build-exe -OReleaseFast --dep quicz \
-  -Mroot=examples/quic_bench_simple.zig -Mquicz=src/lib.zig \
-  --name quicz-quic-bench-simple -femit-bin=zig-out/bin/quicz-quic-bench-simple \
-  --cache-dir .zig-cache --global-cache-dir .zig-cache/global
-./zig-out/bin/quicz-quic-bench-simple
+# 单个基准
+zig build run-quic-bench             # installed-keys 微基准
+zig build run-quic-bench-hs          # 真实握手吞吐 + 延迟
+zig build run-quic-bench-simple      # 单线程原始处理
+zig build run-quic-bench-datagram    # RFC 9221 DATAGRAM 吞吐
+zig build run-quic-bench-profile     # 逐阶段剖析
+zig build run-congestion-bench       # NewReno vs CUBIC 模拟丢包
 ```
 
 ## 如何读这些数字

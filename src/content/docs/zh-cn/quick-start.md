@@ -177,14 +177,32 @@ zig fmt --check build.zig src examples     # 格式检查
 
 ## 互通测试
 
-quicz 通过启用证书校验的 quic-go / quiche / s2n-quic 互通：
+quicz 通过完整的**双向互通矩阵（7/7）**，对 quic-go、quiche、s2n-quic、quinn 四实现。
+全部使用启用证书校验的 TLS 1.3，证书为正规 CA（`testdata/quicz-echo-ca.pem`）签发的 CA 签名
+leaf（`testdata/cert.pem`），因此严格 webpki 客户端（s2n-quic、rustls/quinn）接受信任链。
+
+| 方向 | 对端 | 结果 |
+| --- | --- | --- |
+| 正向（quicz client → server） | quic-go / quiche / s2n-quic | echo_bytes=19，证书校验通过 |
+| 反向（client → quicz server） | quic-go / quinn / quiche / s2n-quic | echo_streams=2，echo_bytes=10 |
 
 ```sh
-examples/interop/run_external_interop.sh all        # 需要 Go + Rust 工具链
-examples/interop/run_external_interop.sh quic-go
-examples/interop/run_external_interop.sh quiche
-examples/interop/run_external_interop.sh s2n-quic
+# 启动 quicz runtime server
+zig build && zig-out/bin/quicz-interop-runtime-server 4433 cert.pem key.pem
+
+# 正向：quicz client → 外部 server
+zig-out/bin/quicz-interop-runtime-client 127.0.0.1 4433 quicz-echo-ca.pem localhost
+
+# 反向矩阵（外部 client → quicz server），四个对端
+examples/interop/run_reverse_interop.sh all 4433
 ```
+
+## 安全
+
+[`THREAT_MODEL.md`](https://github.com/venjiang/quicz/blob/main/THREAT_MODEL.md)
+记录信任边界与范围内攻击的防御（放大、包注入、stateless reset token 猜测、版本降级、
+敌意 transport parameter、Retry token 伪造），每项附代码与测试引用。见
+[威胁模型](/zh-cn/security/)页。
 
 ## 开发入口
 
