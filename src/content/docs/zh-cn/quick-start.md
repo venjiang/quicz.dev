@@ -7,8 +7,7 @@ description: 把 quicz 加入 Zig 应用，跑起第一个 QUIC / HTTP/3 端点
 已生产可用（40/41 功能、1820 测试、三实现互通验证）。公开 API 仍可能演进。
 
 推荐的生产 API 是**异步 `std.Io` 运行时**（`quicz.runtime`）：事件驱动 server + 每连接
-独立 handler、async client 会话。`Endpoint → Connection → Stream` API 与低层 packet API
-仍可用。
+独立 handler、async client 会话。低层 packet API 供精细控制使用。
 
 ## 环境要求
 
@@ -97,82 +96,6 @@ pub fn main() !void {
 handler 签名：`fn (ServerConnection) std.Io.Cancelable!void`。每连接
 `ServerConnection.acceptStream()` 返回 `Stream`，提供 `receive(buf)` / `send(data, fin)`。
 见 `examples/io_echo.zig` 和 `examples/multi_conn_test.zig`。
-
-## Endpoint API（备选）
-
-三层 `Endpoint → Connection → Stream` API（`quicz.api`）与 quic-go / s2n-quic 同模式，
-无需 async runtime 即可使用。
-
-### 服务端（echo）
-
-```zig
-const quicz = @import("quicz");
-const api = quicz.api;
-
-pub fn main() !void {
-    var ep = try api.Endpoint.listen(.{
-        .allocator = gpa,
-        .address = "0.0.0.0",
-        .port = 4433,
-        .cert_pem = cert_bytes,
-        .key_pem = key_bytes,
-        .alpn = &.{"h3"},
-    });
-    defer ep.deinit();
-
-    while (true) {
-        _ = try ep.poll(100);
-        var conn = (try ep.accept()) orelse continue;
-        var stream = (try conn.acceptStream()) orelse continue;
-
-        var buf: [4096]u8 = undefined;
-        const n = try stream.read(&buf);
-        try stream.write(buf[0..n], .{ .fin = true });
-        stream.close();
-    }
-}
-```
-
-### 客户端
-
-```zig
-const quicz = @import("quicz");
-const api = quicz.api;
-
-pub fn main() !void {
-    var ep = try api.Endpoint.bind(.{ .allocator = gpa });
-    defer ep.deinit();
-
-    var conn = try ep.connect(.{
-        .address = "127.0.0.1",
-        .port = 4433,
-        .server_name = "localhost",
-        .alpn = &.{"h3"},
-    });
-
-    var stream = try conn.openStream();
-    try stream.write("GET /", .{ .fin = true });
-
-    var buf: [4096]u8 = undefined;
-    const n = try stream.read(&buf);
-    std.debug.print("{s}\n", .{buf[0..n]});
-
-    conn.close(0, "done");
-}
-```
-
-调用方不接触 packet number space、traffic secret 或 CRYPTO frame。allocator 显式传入；
-`close` 幂等；所有资源有确定性 deinit 路径。
-
-### API 设计
-
-三层 API 与主流 QUIC 实现采用相同模式：
-
-| 层级 | quicz | quic-go (Go) | s2n-quic (Rust) | endel/quic-zig (Zig) |
-| --- | --- | --- | --- | --- |
-| 端点 | `Endpoint.listen/bind/connect/accept/poll` | `Transport.Listen/Dial` | `Server::builder().start()` | `Server(Handler).run()` |
-| 连接 | `Connection.openStream/acceptStream/close` | `Conn.OpenStream/AcceptStream` | `connection.open_bidirectional_stream` | `Connection.openStream` |
-| 流 | `Stream.read/write/reset/close` | `Stream.Read/Write/Close` | `stream.send/receive` | `ReceiveStream.read / SendStream.write` |
 
 ## 低层 API
 

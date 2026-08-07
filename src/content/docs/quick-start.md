@@ -9,8 +9,8 @@ tests, three-implementation interop verified). Public APIs may still evolve.
 
 The recommended production API is the **async `std.Io` runtime**
 (`quicz.runtime`): an event-driven server with per-connection handlers and an
-async client. The `Endpoint → Connection → Stream` API and the low-level packet
-API remain available.
+async client. The low-level packet API remains available for fine-grained
+control.
 
 ## Requirements
 
@@ -100,119 +100,6 @@ pub fn main() !void {
 Handler signature: `fn (ServerConnection) std.Io.Cancelable!void`. Per-connection
 `ServerConnection.acceptStream()` returns a `Stream` with `receive(buf)` /
 `send(data, fin)`. See `examples/io_echo.zig` and `examples/multi_conn_test.zig`.
-
-## Endpoint API (alternative)
-
-The three-layer `Endpoint → Connection → Stream` API (`quicz.api`) mirrors
-quic-go / s2n-quic and works without the async runtime.
-
-### Server (echo)
-
-```zig
-const std = @import("std");
-const quicz = @import("quicz");
-const api = quicz.api;
-
-pub fn main() !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    var ep = try api.Endpoint.listen(.{
-        .allocator = allocator,
-        .address = "0.0.0.0",
-        .port = 4433,
-        .cert_pem = cert_pem_bytes,
-        .key_pem = key_pem_bytes,
-        .alpn = &.{"hq-interop"},
-    });
-    defer ep.deinit();
-
-    while (true) {
-        _ = try ep.poll(100);
-        var conn = (try ep.accept()) orelse continue;
-
-        while (true) {
-            var stream = (try conn.acceptStream()) orelse break;
-            var buf: [4096]u8 = undefined;
-            const n = try stream.read(&buf);
-            try stream.write(buf[0..n], .{ .fin = true });
-            stream.close();
-        }
-    }
-}
-```
-
-### Client
-
-```zig
-const std = @import("std");
-const quicz = @import("quicz");
-const api = quicz.api;
-
-pub fn main() !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    var ep = try api.Endpoint.bind(.{ .allocator = allocator });
-    defer ep.deinit();
-
-    var conn = try ep.connect(.{
-        .address = "127.0.0.1",
-        .port = 4433,
-        .server_name = "localhost",
-        .alpn = &.{"hq-interop"},
-    });
-
-    var stream = try conn.openStream();
-    try stream.write("GET /index.html", .{ .fin = true });
-
-    var buf: [8192]u8 = undefined;
-    const n = try stream.read(&buf);
-    std.debug.print("received {d} bytes\n", .{n});
-
-    conn.close(0, "done");
-}
-```
-
-Callers never touch packet-number spaces, traffic secrets, or CRYPTO frames.
-The allocator is passed explicitly, `close` is idempotent, and every resource
-has a deterministic `deinit` path.
-
-### EndpointConfig options
-
-| Field | Default | Description |
-| --- | --- | --- |
-| `address` | `"0.0.0.0"` | Bind address |
-| `port` | `0` | Bind port (0 = ephemeral) |
-| `cert_pem` / `key_pem` | `null` | TLS certificate and private key (server) |
-| `ca_cert_pem` | `null` | CA certificate for verification (client) |
-| `insecure_skip_verify` | `false` | Skip certificate verification (testing only) |
-| `alpn` | `&.{}` | ALPN protocol identifiers |
-| `max_connections` | `0` | Max concurrent connections (0 = unlimited) |
-| `max_streams_bidi` | `100` | Max bidirectional streams per connection |
-| `max_streams_uni` | `100` | Max unidirectional streams per connection |
-| `max_idle_timeout_ms` | `30000` | Idle timeout in milliseconds |
-| `max_datagram_size` | `1350` | Max UDP payload size |
-| `initial_max_data` | `1048576` | Connection-level flow control window |
-| `initial_max_stream_data` | `262144` | Per-stream flow control window |
-| `enable_datagrams` | `false` | Enable QUIC DATAGRAM extension (RFC 9221) |
-| `max_datagram_frame_size` | `0` | Max DATAGRAM frame size (0 = disabled) |
-| `require_retry` | `false` | Require Retry for address validation (server) |
-| `ipv6` | `false` | Use IPv6 dual-stack socket |
-
-### ConnectConfig options
-
-| Field | Default | Description |
-| --- | --- | --- |
-| `address` | *(required)* | Server address |
-| `port` | *(required)* | Server port |
-| `server_name` | `"localhost"` | TLS SNI |
-| `alpn` | `&.{}` | ALPN protocol identifiers |
-| `ca_cert_pem` | `null` | CA certificate for verification |
-| `insecure_skip_verify` | `false` | Skip certificate verification |
-| `handshake_timeout_ms` | `10000` | Handshake timeout |
 
 ## Low-level API
 
