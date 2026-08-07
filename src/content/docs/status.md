@@ -55,6 +55,5 @@ The transport task matrix tracks these as its definition of done:
 - [Performance](/performance/) — first-party benchmark numbers.
 - [Examples](/examples/) — runnable probes and interop commands.
 
-> The task matrix's historical RFC-status section predates the current
-> production-ready state and is being reconciled; the feature matrix and README
-> reflect the current code.
+> The task matrix's RFC-status table is reconciled to the current feature
+> matrix (2026-08); the feature matrix and README reflect the current code.
