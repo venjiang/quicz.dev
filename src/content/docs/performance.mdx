@@ -79,42 +79,30 @@ ACK-clock and shared-I/O-path limited, not pure CPU compute.
 
 ## Throughput vs other implementations
 
-<div className="qz-perf">
-  <div className="qz-perf-row">
-    <div className="qz-perf-name">quic-go<small>Go · Linux GSO</small></div>
-    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '91.7%' }} title="quic-go — ~1.1 GB/s — quic-go#3670 — Linux GSO" /></div>
-    <div className="qz-perf-val">~1.1 GB/s</div>
-  </div>
-  <div className="qz-perf-row">
-    <div className="qz-perf-name">msquic<small>C · macOS loopback</small></div>
-    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '83.3%' }} title="msquic — ~1 GB/s on macOS loopback (secnetperf); 7–8 Gbps with Windows XDP" /></div>
-    <div className="qz-perf-val">~1 GB/s</div>
-  </div>
-  <div className="qz-perf-row">
-    <div className="qz-perf-name">s2n-quic<small>Rust · Linux GSO</small></div>
-    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '66.7%' }} title="s2n-quic — ~800 MB/s — TQUIC — GSO/GRO" /></div>
-    <div className="qz-perf-val">~800 MB/s</div>
-  </div>
-  <div className="qz-perf-row">
-    <div className="qz-perf-name">quiche<small>Rust · Linux</small></div>
-    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '33.3%' }} title="quiche — ~300–500 MB/s — TQUIC — no GSO" /></div>
-    <div className="qz-perf-val">300–500 MB/s</div>
-  </div>
-  <div className="qz-perf-row">
-    <div className="qz-perf-name">quinn<small>Rust · Linux tokio</small></div>
-    <div className="qz-perf-track"><div className="qz-perf-bar qz-other" style={{ width: '33.3%' }} title="quinn — ~300–500 MB/s — KIT 2025 / ETH thesis" /></div>
-    <div className="qz-perf-val">300–500 MB/s</div>
-  </div>
-  <div className="qz-perf-row">
-    <div className="qz-perf-name">quicz<small>Zig · macOS loopback</small></div>
-    <div className="qz-perf-track"><div className="qz-perf-bar qz-self" style={{ width: '32.5%' }} title="quicz — ~390 MB/s — this repo — real handshake, CUBIC, no GSO/XDP" /></div>
-    <div className="qz-perf-val">~390 MB/s</div>
-  </div>
-</div>
+The authoritative sourced table on the [feature comparison](/comparisons/) page
+keeps each benchmark's original units (Gbps for some, MB/s for others). Below,
+Gbps figures are converted to MB/s (÷8) so magnitudes are comparable. This is
+**not a controlled head-to-head** — different harnesses, platforms, and kernel
+I/O paths.
 
-<div className="qz-perf-cap">Same-condition-ish macOS/loopback column where possible; Linux
-figures lean on GSO/XDP. <strong>Not a controlled head-to-head</strong> — full sourced table on the
-[feature comparison](/comparisons/) page.</div>
+| Implementation | Sourced | ≈ MB/s | Platform / notes |
+| --- | --- | --- | --- |
+| msquic | 7–8 Gbps | ~875–1000 | Windows XDP (secnetperf dashboard) |
+| msquic | ~1 Gbps | ~125 | macOS loopback (secnetperf) |
+| quic-go | ~4 Gbps (multi) | ~500 | Linux GSO (KIT 2025) |
+| quic-go | ~1.1 Gbps | ~137 | Linux GSO (quic-go#3670) |
+| lsquic | ~2–4 Gbps | ~250–500 | Linux GSO (KIT 2025) |
+| TQUIC | ~1–2 Gbps | ~125–250 | Linux GSO (TQUIC benchmark) |
+| picoquic | ~1–2 Gbps | ~125–250 | Linux (KIT 2025) |
+| s2n-quic | ~800 MB/s | ~800 | Linux GSO/GRO (TQUIC benchmark) |
+| quiche | ~300–500 MB/s | 300–500 | Linux, no GSO (TQUIC benchmark) |
+| quinn | ~300–500 MB/s | 300–500 | Linux tokio (KIT 2025 / ETH thesis) |
+| **quicz** | **~390 MB/s** | **~390** | macOS loopback, real handshake, no GSO/XDP |
+
+quicz's ~390 MB/s (real TLS 1.3 handshake, macOS, no GSO/XDP) sits alongside
+quiche / quinn (~300–500 MB/s) and above quic-go's single-stream GSO figure
+(~137 MB/s). The higher numbers depend on Linux GSO/GRO (3–10×) or XDP kernel
+bypass that macOS does not offer.
 
 ## Methodology
 
