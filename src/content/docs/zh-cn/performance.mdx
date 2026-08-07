@@ -74,29 +74,10 @@ installed-keys 旁路握手（即跳过 RFC 9000 §7.4 的 transport parameters 
 sys CPU 高来自每包 UDP `sendto`/`recvfrom` 系统调用；吞吐受 ACK 时钟与共享 I/O 路径限制，
 非纯 CPU 算力。
 
-## 与其它实现的吞吐对比
+## 其它实现
 
-[功能对比](/zh-cn/comparisons/)页的权威带来源表格保留各基准原始单位（部分 Gbps、部分
-MB/s）。下表把 Gbps 换算成 MB/s（÷8）以便量级可比。**非受控对比**——harness、平台、
-内核 I/O 路径各不相同。
-
-| 实现 | 原文 | ≈ MB/s | 平台 / 备注 |
-| --- | --- | --- | --- |
-| msquic | 7–8 Gbps | ~875–1000 | Windows XDP（secnetperf dashboard） |
-| msquic | ~1 Gbps | ~125 | macOS loopback（secnetperf） |
-| quic-go | ~4 Gbps（多流） | ~500 | Linux GSO（KIT 2025） |
-| quic-go | ~1.1 Gbps | ~137 | Linux GSO（quic-go#3670） |
-| lsquic | ~2–4 Gbps | ~250–500 | Linux GSO（KIT 2025） |
-| TQUIC | ~1–2 Gbps | ~125–250 | Linux GSO（TQUIC benchmark） |
-| picoquic | ~1–2 Gbps | ~125–250 | Linux（KIT 2025） |
-| s2n-quic | ~800 MB/s | ~800 | Linux GSO/GRO（TQUIC benchmark） |
-| quiche | ~300–500 MB/s | 300–500 | Linux，无 GSO（TQUIC benchmark） |
-| quinn | ~300–500 MB/s | 300–500 | Linux tokio（KIT 2025 / ETH thesis） |
-| **quicz** | **~390 MB/s** | **~390** | macOS loopback，真实握手，无 GSO/XDP |
-
-quicz 的 ~390 MB/s（真实 TLS 1.3 握手，macOS，无 GSO/XDP）与 quiche / quinn
-（~300–500 MB/s）同档，高于 quic-go 单流 GSO 数字（~137 MB/s）；更高数字依赖
-Linux GSO/GRO（3–10x）或 XDP 内核旁路，macOS 无法提供。
+跨实现吞吐数字引自外部基准（secnetperf、KIT 2025、TQUIC、quic-go#3670）——**非 quicz
+实测**。完整带来源表格见[功能对比](/zh-cn/comparisons/)页。
 
 ## 测试方法
 
