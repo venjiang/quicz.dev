@@ -58,6 +58,9 @@ export default defineConfig({
 						{ label: 'Performance', slug: 'performance', translations: { 'zh-CN': '性能' } },
 						{ label: 'Production tuning', slug: 'tuning', translations: { 'zh-CN': '生产调优' } },
 						{ label: 'Threat model', slug: 'security', translations: { 'zh-CN': '威胁模型' } },
+						{ label: 'Runtime design', slug: 'runtime', translations: { 'zh-CN': '运行时设计' } },
+						{ label: 'H3 runtime', slug: 'h3-runtime', translations: { 'zh-CN': 'H3 运行时' } },
+						{ label: 'Network benchmark', slug: 'network-benchmark', translations: { 'zh-CN': '网络基准' } },
 					],
 				},
 				{
