@@ -53,6 +53,7 @@ export default defineConfig({
 					label: 'Reference',
 					translations: { 'zh-CN': '参考' },
 					items: [
+						{ label: 'API reference', slug: 'api', translations: { 'zh-CN': 'API 参考' } },
 						{ label: 'Feature comparison', slug: 'comparisons', translations: { 'zh-CN': '功能对比' } },
 						{ label: 'Performance', slug: 'performance', translations: { 'zh-CN': '性能' } },
 						{ label: 'Production tuning', slug: 'tuning', translations: { 'zh-CN': '生产调优' } },

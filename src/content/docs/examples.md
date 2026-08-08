@@ -15,7 +15,7 @@ and `zig build --help` is the authoritative generated index.
 | --- | --- | --- |
 | `run-quic-echo-server` | `quic_echo_server.zig` | Multi-connection QUIC echo server, TLS 1.3 on real UDP. |
 | `run-quic-echo-client` | `quic_echo_client.zig` | QUIC echo client: handshake, stream write/read, close. |
-| `run-h3-server` | `h3_server.zig` | HTTP/3 static response server (SETTINGS + HEADERS + DATA). |
+| `run-h3-server` | `h3_server.zig` | HTTP/3 server on the production runtime (`runtime.Server.serveH3`, QPACK dynamic). |
 | `run-datagram-echo -- --server` | `datagram_echo.zig` | QUIC DATAGRAM (RFC 9221) echo server — unreliable datagrams. |
 | `run-datagram-echo -- --client` | `datagram_echo.zig` | QUIC DATAGRAM echo client. |
 | `run-post-quantum-echo -- --server` | `post_quantum_echo.zig` | X25519Kyber768 post-quantum KEX + QUIC echo server. |

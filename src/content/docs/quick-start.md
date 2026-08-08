@@ -1,20 +1,18 @@
 ---
 title: Quick start
-description: Add quicz to a Zig app and run your first QUIC / HTTP/3 endpoint
+description: Build real QUIC / HTTP/3 apps with quicz's async I/O runtime
 ---
 
-`quicz` is a QUIC / HTTP/3 implementation in pure [Zig](https://ziglang.org/).
-Transport and application layer are production-ready (40/41 features, 1820
-tests, three-implementation interop verified). Public APIs may still evolve.
-
-The recommended production API is the **async `std.Io` runtime**
-(`quicz.runtime`): an event-driven server with per-connection handlers and an
-async client. The low-level packet API remains available for fine-grained
-control.
+`quicz` is a QUIC / HTTP/3 implementation in pure [Zig](https://ziglang.org/)
+(40/41 features, 1820 tests, three-implementation interop verified). The
+recommended production API is the **async `std.Io` runtime** (`quicz.runtime`):
+an event-driven server with per-connection handlers and an async client. This
+guide walks through the HTTP/3 path (recommended for most apps) and the
+low-level stream-echo path (for custom protocols). Public APIs may still evolve.
 
 ## Requirements
 
-- Zig **0.16.0**
+- Zig **0.16.0** — the library is pure Zig, no C dependencies.
 
 ## Add the dependency
 
@@ -22,108 +20,183 @@ control.
 zig fetch --save git+https://github.com/venjiang/quicz
 ```
 
-Then expose the module in your `build.zig`:
+In `build.zig`:
 
 ```zig
 const quicz_dep = b.dependency("quicz", .{ .target = target, .optimize = optimize });
 exe.root_module.addImport("quicz", quicz_dep.module("quicz"));
 ```
 
-## I/O runtime (async, `std.Io`)
+Then `const quicz = @import("quicz");`.
 
-`quicz.runtime` provides an event-driven server/client on Zig 0.16 `std.Io`
-(threaded). The server spawns an independent handler task per connection
-(std.http model); the client drives an async session.
+## Common setup: the event loop
 
-### Server (echo)
+Both server and client run on a Zig `std.Io` instance. The `Threaded` backend
+executes async I/O on a thread pool; your app drives streams from async tasks.
 
 ```zig
-const std = @import("std");
-const quicz = @import("quicz");
+var threaded = std.Io.Threaded.init(allocator, .{});
+defer threaded.deinit();
+const io = threaded.io();
+```
+
+## HTTP/3 server
+
+`runtime.Server` owns the socket, endpoint, and connection lifecycle. Use
+`serveH3` with a synchronous request handler.
+
+```zig
 const Server = quicz.runtime.server.Server;
 
-pub fn main() !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    var threaded = std.Io.Threaded.init(allocator, .{});
-    defer threaded.deinit();
-    const io = threaded.io();
-
-    var server = try Server.init(allocator, io, .{
-        .port = 4433,
-        .alpn = &.{"hq-interop"},
-        .cert_der = &cert_der,
-        .private_key = &key,
-    });
-    defer server.deinit();
-    try server.serve(&echoHandler); // fn(ServerConnection) std.Io.Cancelable!void
+fn handleRequest(req: quicz.h3_request.DecodedRequest) quicz.h3_request.Response {
+    if (std.mem.eql(u8, req.path, "/")) {
+        return .{ .status = 200, .body = "Hello from quicz HTTP/3!" };
+    }
+    // Streamed (chunked) response body — sent as multiple DATA frames.
+    if (std.mem.eql(u8, req.path, "/stream")) {
+        return .{
+            .status = 200,
+            .body_stream = quicz.h3_request.ResponseBody.fromRepeating(allocator, 'S', 65536) catch unreachable,
+        };
+    }
+    return .{ .status = 404, .body = "not found" };
 }
 
-fn echoHandler(conn: quicz.runtime.server.ServerConnection) std.Io.Cancelable!void {
+var server = try Server.init(allocator, io, .{
+    .port = 4433,
+    .alpn = &.{"h3"},
+    .cert_der = &certificate_der,       // DER certificate
+    .private_key = &server_private_key, // matching private key
+});
+defer server.deinit();
+try server.serveH3(.{}, handleRequest); // options: qpack_max_table_capacity, qpack_blocked_streams
+
+// Block until killed (serveLoop runs as a concurrent task).
+server.drive_group.await(io) catch {};
+```
+
+Test with `curl --http3-prior https://127.0.0.1:4433/ -k -v` (a curl build with
+HTTP/3 support).
+
+### Response variants
+
+| Field | Meaning |
+| --- | --- |
+| `.body = slice` | Single contiguous body, encoded as one DATA frame |
+| `.body_stream = ResponseBody` | Chunked body (takes precedence over `body`) |
+| neither | Bodyless response (HEADERS + fin) |
+
+Request bodies are aggregated up to `max_request_body_size` (1 MiB default);
+inside the handler `req.body` holds the full body (or `null`). Oversized bodies
+are rejected with 413 + STOP_SENDING.
+
+## HTTP/3 client
+
+```zig
+const Client = quicz.runtime.client.Client;
+const H3Client = quicz.runtime.h3_client.H3Client;
+
+var client = try Client.init(allocator, io, .{
+    .server_port = 4433,
+    .server_name = "localhost",
+    .alpn = &.{"h3"},
+    .insecure_skip_verify = true, // null ca_bundle also skips verification
+});
+defer client.deinit();
+try client.connect();
+
+var h3cli = H3Client.init(allocator, &client, 4096, 8); // qpack cap, blocked streams
+defer h3cli.deinit();
+try h3cli.run(); // waits for the server SETTINGS
+
+// Send a GET request.
+const stream = try h3cli.sendRequest(.{
+    .method = "GET",
+    .path = "/",
+    .authority = "localhost",
+});
+const resp = try h3cli.receiveResponse(stream);
+if (resp.isSuccess()) {
+    // resp.body is the aggregated response body (or null).
+}
+client.close();
+```
+
+### Streamed request body
+
+For large uploads, `sendRequestStreamed` sends the body as bounded DATA frames,
+blocking until fully drained (flow-control credit is awaited):
+
+```zig
+const body = try quicz.h3_request.ResponseBody.fromRepeating(allocator, 'A', 20 * 1024);
+const stream = try h3cli.sendRequestStreamed(.{
+    .method = "POST",
+    .path = "/echo",
+    .authority = "localhost",
+}, body);
+const resp = try h3cli.receiveResponse(stream);
+```
+
+## Low-level stream echo (custom protocols)
+
+For non-HTTP protocols, use `Server.serve` with a per-connection handler
+(std.http model). Each connection gets its own handler task.
+
+```zig
+const ServerConnection = quicz.runtime.server.ServerConnection;
+
+fn echoHandler(conn: ServerConnection) std.Io.Cancelable!void {
+    var c = conn;
+    var stream = c.acceptStream() catch return;
+    var buf: [65536]u8 = undefined;
     while (true) {
-        var stream = (try conn.acceptStream()) orelse break;
-        var buf: [4096]u8 = undefined;
-        const n = try stream.receive(&buf);
-        try stream.send(buf[0..n], .{ .fin = true });
+        const n = stream.receive(&buf) catch return;
+        if (n == 0) break; // EOF
+        stream.send(buf[0..n], false) catch return;
     }
 }
-```
 
-### Client
-
-```zig
-const std = @import("std");
-const quicz = @import("quicz");
-const Client = quicz.runtime.client.Client;
-
-pub fn main() !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    var threaded = std.Io.Threaded.init(allocator, .{});
-    defer threaded.deinit();
-    const io = threaded.io();
-
-    var client = try Client.init(allocator, io, .{
-        .server_port = 4433,
-        .server_name = "localhost",
-        .alpn = &.{"hq-interop"},
-    });
-    defer client.deinit();
-    const ok = try client.runEchoSession("hello");
-}
-```
-
-Handler signature: `fn (ServerConnection) std.Io.Cancelable!void`. Per-connection
-`ServerConnection.acceptStream()` returns a `Stream` with `receive(buf)` /
-`send(data, fin)`. See `examples/io_echo.zig` and `examples/multi_conn_test.zig`.
-
-## Low-level API
-
-For fine-grained packet processing, TLS-backend driving, or custom endpoint
-routing, the internal modules are public too:
-
-```zig
-const quicz = @import("quicz");
-
-var conn = try quicz.Connection.init(allocator, .client, .{
-    .initial_max_data = 65_536,
-    .initial_max_streams_bidi = 16,
+var server = try Server.init(allocator, io, .{
+    .port = 4433,
+    .alpn = &.{"hq-interop"},
+    .cert_der = &certificate_der,
+    .private_key = &server_private_key,
 });
-defer conn.deinit();
-
-const tls13 = quicz.tls13;                 // pure-Zig TLS 1.3
-const protection = quicz.protection;       // AES-GCM, ChaCha20-Poly1305
-const cubic = quicz.cubic;                 // congestion control (NewReno + CUBIC)
-const h3 = quicz.h3; const qpack = quicz.qpack; const webtransport = quicz.webtransport;
-const qlog = quicz.qlog;
+defer server.deinit();
+try server.serve(&echoHandler);
 ```
 
-See the [architecture](/architecture/) doc and the interop server/client in the
-repo for the full low-level wiring.
+Client side: `connect()` then `send` / `receive` on a stream:
+
+```zig
+try client.connect();
+const sid = try client.send("hello", false);
+var buf: [4096]u8 = undefined;
+const n = try client.receive(sid, &buf); // 0 = EOF
+```
+
+## Certificates
+
+The examples bundle a local test-only P-256 key pair. For production:
+
+- **macOS / arm64**: ECDSA P-256 certificates work.
+- **Linux x86_64**: Zig 0.16's `std.crypto` has a known codegen bug for
+  P-256/P-384/Ed25519 signature verification. Use **RSA certificates** and a
+  **Release** build (`-Doptimize=ReleaseFast`). An OpenSSL-generated RSA
+  certificate verifies correctly on Linux.
+
+`Server.Config` supports `bind_addr` (default `127.0.0.1`); set it to
+`.{0,0,0,0}` to listen on all interfaces.
+
+## Common patterns
+
+- **Per-connection handler task** — `Server.serve` / `serveH3` spawn one task per
+  connection; each connection's resources are single-owner (no refcounting).
+- **Non-blocking multistream** — poll with `tryAcceptStreamId` /
+  `tryReceiveStreamData` / `connStreamIds` and park on `waitStreamActivity`
+  instead of blocking on one stream.
+- **Concurrency** — `std.Io.Group.concurrent` runs independent client/server
+  tasks; `examples/multi_client_bench.zig` shows N concurrent clients.
 
 ## Build and run the probes
 
@@ -136,16 +209,15 @@ zig build run-quic-bench                   # throughput / latency benchmarks
 zig fmt --check build.zig src examples     # format check
 ```
 
-For runnable demos (echo, DATAGRAM, post-quantum, 0-RTT, congestion bench,
-connection migration) see the [examples guide](/examples/). Numbers behind the
-benchmarks live on the [performance](/performance/) page.
+Runnable demos (echo, DATAGRAM, post-quantum, 0-RTT, H3 server, congestion,
+connection migration) on the [examples](/examples/) page; benchmark numbers on
+the [performance](/performance/) page.
 
 ## Interop testing
 
 quicz passes a full **bidirectional interop matrix (7/7)** against quic-go,
-quiche, s2n-quic, and quinn. All tests use certificate-verified TLS 1.3 with a
-proper CA + CA-signed leaf, so strict webpki clients (s2n-quic, rustls/quinn)
-accept the trust chain.
+quiche, s2n-quic, and quinn — certificate-verified TLS 1.3 with a proper CA
+chain.
 
 | Direction | Peer | Result |
 | --- | --- | --- |
@@ -153,34 +225,25 @@ accept the trust chain.
 | Reverse (client → quicz server) | quic-go / quinn / quiche / s2n-quic | echo_streams=2, echo_bytes=10 |
 
 ```sh
-# Start the quicz runtime server
 zig build && zig-out/bin/quicz-interop-runtime-server 4433 cert.pem key.pem
-
-# Forward: quicz client → external server
 zig-out/bin/quicz-interop-runtime-client 127.0.0.1 4433 quicz-echo-ca.pem localhost
-
-# Reverse matrix (external clients → quicz server), all four peers
 examples/interop/run_reverse_interop.sh all 4433
 ```
 
 ## Security
 
 [`THREAT_MODEL.md`](https://github.com/venjiang/quicz/blob/main/THREAT_MODEL.md)
-documents the trust boundary and the defenses against in-scope attacks
-(amplification, packet injection, stateless reset token guessing, version
-downgrade, hostile transport parameters, Retry token forgery), each with code
-and test references. See the [threat model](/security/) page.
+documents the trust boundary and defenses against in-scope attacks, each with
+code and test references. See the [threat model](/security/) page.
 
 ## Development map
 
 | Need | Start here |
 | --- | --- |
 | Async I/O runtime | [`src/runtime/`](https://github.com/venjiang/quicz/tree/main/src/runtime) |
-| Public high-level API | [`src/quic/api.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/api.zig) |
+| Runtime API reference | [`/api/`](/api/) |
 | Connection state machine | [`src/quic/connection.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/connection.zig) |
 | Pure-Zig TLS 1.3 | [`src/tls/tls13.zig`](https://github.com/venjiang/quicz/blob/main/src/tls/tls13.zig) |
-| Post-quantum KEX | [`src/tls/pq_kex.zig`](https://github.com/venjiang/quicz/blob/main/src/tls/pq_kex.zig) |
-| Endpoint routing / lifecycle | [`src/quic/endpoint.zig`](https://github.com/venjiang/quicz/blob/main/src/quic/endpoint.zig) |
 | HTTP/3 / QPACK / WebTransport | [`src/h3/`](https://github.com/venjiang/quicz/tree/main/src/h3) |
 | Runnable examples | [`examples/`](https://github.com/venjiang/quicz/tree/main/examples) |
 | Protocol status & evidence | [status](/status/) |
